@@ -1,4 +1,16 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const getApiBaseUrl = (): string => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  if (typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('file://')) {
+    if (!window.location.hostname.includes('5173')) {
+      return `${window.location.origin}/api`;
+    }
+  }
+  return 'http://localhost:3001/api';
+};
+
+export const API_BASE_URL = getApiBaseUrl();
 
 export const getStoredToken = (): string | null => {
   return localStorage.getItem('discord_auth_token');

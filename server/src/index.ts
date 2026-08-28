@@ -2,6 +2,8 @@ import express from 'express';
 import http from 'http';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
 import { Server } from 'socket.io';
 import authRoutes from './routes/auth';
 import serverRoutes from './routes/servers';
@@ -47,6 +49,18 @@ app.use('/api', messageRoutes);
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', name: 'MELODIA API', timestamp: new Date().toISOString() });
 });
+
+// Servir frontend compilado para acesso web via Cloudflare Tunnel
+const clientDistPath = path.resolve(__dirname, '../../client/dist');
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+  app.use((req, res, next) => {
+    if (req.method === 'GET' && !req.path.startsWith('/api') && !req.path.startsWith('/socket.io')) {
+      return res.sendFile(path.join(clientDistPath, 'index.html'));
+    }
+    next();
+  });
+}
 
 // Inicialização dos Sockets e Sinalização WebRTC
 setupSocketHandlers(io);

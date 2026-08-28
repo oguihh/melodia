@@ -3,10 +3,22 @@ import { getStoredToken } from './api';
 
 let socket: Socket | null = null;
 
+const getSocketUrl = (): string => {
+  if (import.meta.env.VITE_SOCKET_URL) {
+    return import.meta.env.VITE_SOCKET_URL;
+  }
+  if (typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('file://')) {
+    if (!window.location.hostname.includes('5173')) {
+      return window.location.origin;
+    }
+  }
+  return 'http://localhost:3001';
+};
+
 export const getSocket = (): Socket => {
   if (!socket) {
     const token = getStoredToken();
-    const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
+    const SOCKET_URL = getSocketUrl();
 
     socket = io(SOCKET_URL, {
       auth: {
@@ -27,7 +39,7 @@ export const reconnectSocketWithToken = (token: string): Socket => {
     socket.disconnect();
   }
 
-  const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
+  const SOCKET_URL = getSocketUrl();
   socket = io(SOCKET_URL, {
     auth: {
       token,

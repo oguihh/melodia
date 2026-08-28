@@ -31,3 +31,6 @@ Thumbs.db
 # Electron builds
 dist_electron/
 release/
+
+# Cloudflare Tunnel
+cloudflared.exe
