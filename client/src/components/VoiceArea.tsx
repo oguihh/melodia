@@ -144,14 +144,14 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
         </div>
       </div>
 
-      {/* 2. Área Central / Palco de Transmissão ou Grid */}
-      <div className="flex-1 p-4 overflow-y-auto flex flex-col items-center justify-center space-y-4">
+      {/* 2. Área Central / Palco de Transmissão Expandido Total ou Grid */}
+      <div className="flex-1 p-2 sm:p-4 overflow-hidden flex flex-col items-center justify-center min-h-0 w-full">
         {/* Caso 1: VOCÊ está compartilhando tela */}
         {isScreenSharing && screenStream && isWatchingLocalScreen ? (
-          <div className="w-full h-full max-w-5xl flex flex-col items-center justify-center space-y-3">
+          <div className="w-full h-full flex flex-col items-center justify-between min-h-0 space-y-2">
             <div
               ref={stageContainerRef}
-              className="w-full h-[65vh] bg-black rounded-xl overflow-hidden shadow-2xl relative border border-[#2b2d31] flex items-center justify-center group"
+              className="w-full flex-1 min-h-0 bg-black rounded-xl overflow-hidden shadow-2xl relative border border-[#2b2d31] flex items-center justify-center group"
             >
               <video
                 ref={localScreenRef}
@@ -161,13 +161,13 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
                 className="w-full h-full object-contain"
               />
 
-              <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white flex items-center space-x-2 border border-white/10">
+              <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white flex items-center space-x-2 border border-white/10 z-10">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#f23f43] animate-pulse" />
                 <span className="font-bold">AO VIVO (1080p 60 FPS)</span>
                 <span className="text-[#949ba4]">• Você está transmitindo</span>
               </div>
 
-              <div className="absolute top-3 right-3 flex items-center space-x-2 opacity-90 hover:opacity-100 transition">
+              <div className="absolute top-3 right-3 flex items-center space-x-2 opacity-90 hover:opacity-100 transition z-10">
                 <button
                   onClick={() => setIsWatchingLocalScreen(false)}
                   className="bg-[#2b2d31]/80 hover:bg-[#35373c] text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 backdrop-blur-md transition shadow border border-white/10"
@@ -210,20 +210,20 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
           </div>
         ) : currentlyWatchedPeer ? (
           /* Caso 2: VOCÊ ESTÁ ASSISTINDO A TRANSMISSÃO DE UM AMIGO */
-          <div className="w-full h-full max-w-5xl flex flex-col items-center justify-center space-y-3">
+          <div className="w-full h-full flex flex-col items-center justify-between min-h-0 space-y-2">
             <div
               ref={stageContainerRef}
-              className="w-full h-[65vh] bg-black rounded-xl overflow-hidden shadow-2xl relative border border-[#2b2d31] flex items-center justify-center group"
+              className="w-full flex-1 min-h-0 bg-black rounded-xl overflow-hidden shadow-2xl relative border border-[#2b2d31] flex items-center justify-center group"
             >
               <RemoteVideoView stream={currentlyWatchedPeer.stream!} />
 
-              <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white flex items-center space-x-2 border border-white/10">
+              <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white flex items-center space-x-2 border border-white/10 z-10">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#f23f43] animate-pulse" />
                 <span className="font-bold">AO VIVO (1080p 60 FPS)</span>
                 <span className="text-[#949ba4]">• Transmitido por {currentlyWatchedPeer.username}</span>
               </div>
 
-              <div className="absolute top-3 right-3 flex items-center space-x-2 opacity-90 hover:opacity-100 transition">
+              <div className="absolute top-3 right-3 flex items-center space-x-2 opacity-90 hover:opacity-100 transition z-10">
                 <button
                   onClick={() => setWatchingPeerId('')}
                   className="bg-[#f23f43]/90 hover:bg-[#f23f43] text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 backdrop-blur-md transition shadow-lg"
@@ -258,7 +258,7 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
           </div>
         ) : (
           /* Caso 3: GRID NORMAL DE CARDS */
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 w-full max-w-6xl">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 w-full max-w-6xl overflow-y-auto">
             {/* Card Local */}
             <div
               className={`bg-[#2b2d31] rounded-2xl p-6 flex flex-col items-center justify-center relative min-h-[220px] border-2 transition-all duration-200 shadow-lg ${
@@ -482,7 +482,7 @@ const ParticipantStrip: React.FC<{
   onContextMenu: (e: React.MouseEvent, peer: PeerConnectionInfo) => void;
 }> = ({ currentUser, isSpeaking, isMuted, peerList, locallyMutedPeers, onContextMenu }) => {
   return (
-    <div className="flex items-center justify-center space-x-3 overflow-x-auto w-full py-1">
+    <div className="flex items-center justify-center space-x-3 overflow-x-auto w-full py-1 shrink-0">
       <div
         className={`bg-[#2b2d31] rounded-xl px-4 py-2 flex items-center space-x-2 border ${
           isSpeaking ? 'border-[#23a55a] ring-2 ring-[#23a55a]/30' : 'border-transparent'
