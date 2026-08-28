@@ -1,9 +1,15 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer, session } = require('electron');
+const { app, BrowserWindow, ipcMain, desktopCapturer, session, nativeImage } = require('electron');
 const path = require('path');
+
+// Identificador único do aplicativo no Windows para ícone correto na barra de tarefas
+app.setAppUserModelId('com.melodia.app');
 
 let mainWindow = null;
 
 function createWindow() {
+  const iconPath = path.join(__dirname, '../public/icon.ico');
+  const iconImage = nativeImage.createFromPath(iconPath);
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -12,14 +18,16 @@ function createWindow() {
     frame: false,
     titleBarStyle: 'hidden',
     backgroundColor: '#1e1f22',
+    icon: iconImage,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: false,
     },
-    icon: path.join(__dirname, '../public/icon.ico'),
   });
+
+  mainWindow.setIcon(iconImage);
 
   const isDev = process.env.NODE_ENV === 'development' && !app.isPackaged;
 
