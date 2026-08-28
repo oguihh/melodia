@@ -1,13 +1,16 @@
 {
-  "name": "client",
+  "name": "melodia",
+  "productName": "MELODIA",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Aplicativo de voz, vídeo, tela 60 FPS e chat MELODIA",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "electron:dev": "concurrently -k \"vite\" \"wait-on http://127.0.0.1:5173 && cross-env NODE_ENV=development electron .\"",
     "build": "tsc -b && vite build",
+    "electron:build": "npm run build && electron-builder --win",
     "lint": "oxlint",
     "preview": "vite preview"
   },
@@ -28,11 +31,37 @@
     "concurrently": "^10.0.5",
     "cross-env": "^10.1.0",
     "electron": "^44.0.0",
+    "electron-builder": "^26.0.20",
     "oxlint": "^1.79.0",
     "postcss": "^8.5.26",
     "tailwindcss": "^3.4.17",
     "typescript": "~6.0.2",
     "vite": "^8.2.2",
     "wait-on": "^9.1.0"
+  },
+  "build": {
+    "appId": "com.melodia.app",
+    "productName": "MELODIA",
+    "directories": {
+      "output": "../dist_electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MELODIA"
+    }
   }
 }

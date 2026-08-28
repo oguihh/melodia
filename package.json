@@ -1,11 +1,12 @@
 {
-  "name": "discord-clone-e2ee",
+  "name": "melodia",
   "version": "1.0.0",
-  "description": "Discord Clone com Chamadas de Voz, Vídeo, Compartilhamento de Tela e E2EE",
+  "description": "MELODIA - Voz, Vídeo, Tela 60FPS, Chat e Amigos",
   "scripts": {
     "dev": "concurrently -n \"SERVER,CLIENT\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
     "app": "concurrently -n \"SERVER,DESKTOP\" -c \"bgBlue.bold,bgGreen.bold\" \"npm run dev --prefix server\" \"npm run electron:dev --prefix client\"",
     "build": "npm run build --prefix server && npm run build --prefix client",
+    "build:exe": "npm run electron:build --prefix client",
     "start": "npm run start --prefix server"
   },
   "devDependencies": {

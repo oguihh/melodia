@@ -1,0 +1,42 @@
+name: Gerar Instalador MELODIA Windows (.exe)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Baixar Código do Repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: 'client/package-lock.json'
+
+      - name: Instalar Dependências do Cliente
+        working-directory: client
+        run: npm ci
+
+      - name: Compilar Frontend e Gerar Instalador .exe
+        working-directory: client
+        run: npm run electron:build
+
+      - name: Publicar Release no GitHub
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            dist_electron/*.exe
+            dist_electron/*.blockmap
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
