@@ -41,7 +41,7 @@ export function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showScreenShareModal, setShowScreenShareModal] = useState(false);
 
-  // WebRTC Hook
+  // WebRTC Hook com Username e Avatar sincronizados
   const {
     connectedChannelId,
     connectedServerId,
@@ -60,7 +60,12 @@ export function App() {
     toggleCamera,
     startScreenShare,
     stopScreenShare,
-  } = useWebRTC(socketInstance, currentUser?.id);
+  } = useWebRTC(
+    socketInstance,
+    currentUser?.id,
+    currentUser?.username,
+    currentUser?.avatarUrl
+  );
 
   // Carregar dados de autenticação
   useEffect(() => {

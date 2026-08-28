@@ -131,7 +131,7 @@ export const setupSocketHandlers = (io: Server) => {
         // Transmitir para a sala da conversa
         io.to(`dm-${dmChannelId}`).emit('new-dm-message', directMessage);
 
-        // Notificar individualmente os dois participantes para tocar som e atualizar badge
+        // Notificar individualmente o destinatário para som e badge
         const recipientId = dmChannel.user1Id === user.id ? dmChannel.user2Id : dmChannel.user1Id;
         io.to(`user-${recipientId}`).emit('dm-notification', {
           dmChannelId,
@@ -224,19 +224,23 @@ export const setupSocketHandlers = (io: Server) => {
       leaveCurrentVoice(socket);
     });
 
-    socket.on('signal-offer', (data: { targetSocketId: string; offer: any; isScreenShare?: boolean }) => {
+    socket.on('signal-offer', (data: { targetSocketId: string; offer: any; senderUsername?: string; senderAvatarUrl?: string; isScreenShare?: boolean }) => {
       io.to(data.targetSocketId).emit('signal-offer', {
         senderSocketId: socket.id,
         senderUserId: user.id,
+        senderUsername: data.senderUsername || user.username,
+        senderAvatarUrl: data.senderAvatarUrl,
         offer: data.offer,
         isScreenShare: data.isScreenShare,
       });
     });
 
-    socket.on('signal-answer', (data: { targetSocketId: string; answer: any }) => {
+    socket.on('signal-answer', (data: { targetSocketId: string; answer: any; senderUsername?: string; senderAvatarUrl?: string }) => {
       io.to(data.targetSocketId).emit('signal-answer', {
         senderSocketId: socket.id,
         senderUserId: user.id,
+        senderUsername: data.senderUsername || user.username,
+        senderAvatarUrl: data.senderAvatarUrl,
         answer: data.answer,
       });
     });

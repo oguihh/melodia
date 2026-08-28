@@ -8,10 +8,17 @@ const RTC_CONFIG: RTCConfiguration = {
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
   ],
 };
 
-export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
+export const useWebRTC = (
+  socket: Socket | null,
+  currentUserId?: string,
+  currentUsername?: string,
+  currentAvatarUrl?: string
+) => {
   const [connectedChannelId, setConnectedChannelId] = useState<string | null>(null);
   const [connectedServerId, setConnectedServerId] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
@@ -37,7 +44,7 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
     setPeers(new Map(peersRef.current));
   }, []);
 
-  // Detector de Voz (VAD) via Web Audio API
+  // Detector de Voz (VAD) via Web Audio API (sem retorno de áudio para os alto-falantes)
   const startVoiceActivityDetection = useCallback((stream: MediaStream) => {
     try {
       if (audioContextRef.current) {
@@ -49,10 +56,19 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
       audioContextRef.current = audioCtx;
 
       const source = audioCtx.createMediaStreamSource(stream);
+
+      // Filtro passa-altas a 85Hz para eliminar ruídos graves de ventoinhas e mesa
+      const highPassFilter = audioCtx.createBiquadFilter();
+      highPassFilter.type = 'highpass';
+      highPassFilter.frequency.setValueAtTime(85, audioCtx.currentTime);
+
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 512;
       analyser.smoothingTimeConstant = 0.4;
-      source.connect(analyser);
+
+      source.connect(highPassFilter);
+      highPassFilter.connect(analyser);
+      // NÃO conectamos ao audioCtx.destination para nunca dar retorno do próprio microfone
       analyserRef.current = analyser;
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
@@ -69,7 +85,8 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
         }
         const average = sum / dataArray.length;
 
-        const speakingNow = average > 12 && !isMuted;
+        // Gate de ruído: só considera fala acima de 14 para cortar respiração e ruído de fundo
+        const speakingNow = average > 14 && !isMuted;
 
         if (speakingNow) {
           speakingFrames++;
@@ -104,12 +121,24 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
     targetAvatarUrl?: string
   ): RTCPeerConnection => {
     if (peersRef.current.has(targetSocketId)) {
-      peersRef.current.get(targetSocketId)?.connection.close();
+      const existing = peersRef.current.get(targetSocketId);
+      // Se já existe e a conexão está aberta, atualiza nome/avatar e retorna
+      if (existing && existing.connection.signalingState !== 'closed') {
+        if (targetUsername && targetUsername !== existing.username) {
+          existing.username = targetUsername;
+        }
+        if (targetAvatarUrl) {
+          existing.avatarUrl = targetAvatarUrl;
+        }
+        updatePeersState();
+        return existing.connection;
+      }
+      existing?.connection.close();
     }
 
     const pc = new RTCPeerConnection(RTC_CONFIG);
 
-    // Tracks locais de voz/câmera
+    // Adicionar tracks locais de voz/microfone
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => {
         const sender = pc.addTrack(track, localStreamRef.current!);
@@ -119,7 +148,7 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
       });
     }
 
-    // Tracks de tela (se houver)
+    // Adicionar tracks de tela (se já estiver compartilhando)
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach((track) => {
         const sender = pc.addTrack(track, screenStreamRef.current!);
@@ -140,6 +169,7 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
 
     const remoteStream = new MediaStream();
     pc.ontrack = (event) => {
+      // Adicionar a track remota ao remoteStream do peer
       remoteStream.addTrack(event.track);
 
       if (e2eeKeyRef.current && event.receiver) {
@@ -167,7 +197,7 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
     return pc;
   }, [socket, updatePeersState]);
 
-  // Entrar em Canal de Voz
+  // Entrar em Canal de Voz com cancelamento de eco e supressão de ruído nativa
   const joinVoiceChannel = useCallback(async (
     channelId: string,
     serverId: string,
@@ -180,9 +210,11 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
+          echoCancellation: { ideal: true },
+          noiseSuppression: { ideal: true },
+          autoGainControl: { ideal: true },
+          sampleRate: { ideal: 48000 },
+          channelCount: { ideal: 1 },
         },
         video: false,
       });
@@ -249,20 +281,20 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
     setIsDeafened(false);
   }, [socket]);
 
-  // Alternar Mudo
+  // Alternar Mudo (Muta microfone local totalmente)
   const toggleMute = useCallback(() => {
-    if (!localStreamRef.current) return;
-
     const newMute = !isMuted;
-    localStreamRef.current.getAudioTracks().forEach((track) => {
-      track.enabled = !newMute;
-    });
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach((track) => {
+        track.enabled = !newMute;
+      });
+    }
 
     setIsMuted(newMute);
     socket?.emit('update-voice-state', { isMuted: newMute });
   }, [isMuted, socket]);
 
-  // Alternar Deafen
+  // Alternar Deafen (Desativa áudio de todos os outros participantes)
   const toggleDeafen = useCallback(() => {
     const newDeafen = !isDeafened;
     setIsDeafened(newDeafen);
@@ -278,7 +310,7 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
     socket?.emit('update-voice-state', { isDeafened: newDeafen });
   }, [isDeafened, socket]);
 
-  // Alternar Câmera
+  // Alternar Câmera com renegociação
   const toggleCamera = useCallback(async () => {
     if (!connectedChannelId) return;
 
@@ -291,11 +323,21 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
         }
       }
 
-      peersRef.current.forEach((peer) => {
+      peersRef.current.forEach(async (peer, targetSocketId) => {
         const senders = peer.connection.getSenders();
-        const videoSender = senders.find((s) => s.track?.kind === 'video');
+        const videoSender = senders.find((s) => s.track?.kind === 'video' && !s.track.label.toLowerCase().includes('screen'));
         if (videoSender) {
           peer.connection.removeTrack(videoSender);
+          try {
+            const offer = await peer.connection.createOffer();
+            await peer.connection.setLocalDescription(offer);
+            socket?.emit('signal-offer', {
+              targetSocketId,
+              offer,
+              senderUsername: currentUsername,
+              senderAvatarUrl: currentAvatarUrl,
+            });
+          } catch (e) {}
         }
       });
 
@@ -312,11 +354,21 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
           localStreamRef.current.addTrack(camTrack);
         }
 
-        peersRef.current.forEach((peer) => {
+        peersRef.current.forEach(async (peer, targetSocketId) => {
           const sender = peer.connection.addTrack(camTrack, localStreamRef.current!);
           if (e2eeKeyRef.current && sender) {
             setupSenderTransform(sender, e2eeKeyRef.current);
           }
+          try {
+            const offer = await peer.connection.createOffer();
+            await peer.connection.setLocalDescription(offer);
+            socket?.emit('signal-offer', {
+              targetSocketId,
+              offer,
+              senderUsername: currentUsername,
+              senderAvatarUrl: currentAvatarUrl,
+            });
+          } catch (e) {}
         });
 
         setIsCameraOn(true);
@@ -325,9 +377,9 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
         console.error('[WebRTC] Erro ao acessar câmera:', e);
       }
     }
-  }, [connectedChannelId, isCameraOn, socket]);
+  }, [connectedChannelId, isCameraOn, socket, currentUsername, currentAvatarUrl]);
 
-  // Parar Compartilhamento de Tela
+  // Parar Compartilhamento de Tela com renegociação
   const stopScreenShare = useCallback(() => {
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -337,19 +389,30 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
     setScreenStream(null);
     setIsScreenSharing(false);
 
-    peersRef.current.forEach((peer) => {
+    peersRef.current.forEach(async (peer, targetSocketId) => {
       const senders = peer.connection.getSenders();
       senders.forEach((sender) => {
         if (sender.track && sender.track.label.toLowerCase().includes('screen')) {
           peer.connection.removeTrack(sender);
         }
       });
+
+      try {
+        const offer = await peer.connection.createOffer();
+        await peer.connection.setLocalDescription(offer);
+        socket?.emit('signal-offer', {
+          targetSocketId,
+          offer,
+          senderUsername: currentUsername,
+          senderAvatarUrl: currentAvatarUrl,
+        });
+      } catch (e) {}
     });
 
     socket?.emit('update-voice-state', { isScreenSharing: false });
-  }, [socket]);
+  }, [socket, currentUsername, currentAvatarUrl]);
 
-  // Iniciar Compartilhamento de Tela (60 FPS / 1080P)
+  // Iniciar Compartilhamento de Tela (60 FPS / 1080P) COM RENEGOCIAÇÃO WEBRTC INSTANTÂNEA
   const startScreenShare = useCallback(async (quality?: ScreenShareQuality) => {
     if (!connectedChannelId) return;
 
@@ -385,10 +448,26 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
         stopScreenShare();
       };
 
-      peersRef.current.forEach((peer) => {
-        const sender = peer.connection.addTrack(screenTrack, displayStream);
-        if (e2eeKeyRef.current && sender) {
-          setupSenderTransform(sender, e2eeKeyRef.current);
+      // Adicionar track de tela e disparar renegociação imediata para todos os peers conectados!
+      peersRef.current.forEach(async (peer, targetSocketId) => {
+        try {
+          const sender = peer.connection.addTrack(screenTrack, displayStream);
+          if (e2eeKeyRef.current && sender) {
+            setupSenderTransform(sender, e2eeKeyRef.current);
+          }
+
+          const offer = await peer.connection.createOffer();
+          await peer.connection.setLocalDescription(offer);
+
+          socket?.emit('signal-offer', {
+            targetSocketId,
+            offer,
+            senderUsername: currentUsername,
+            senderAvatarUrl: currentAvatarUrl,
+            isScreenShare: true,
+          });
+        } catch (err) {
+          console.error('[WebRTC] Erro ao enviar track de tela para peer:', err);
         }
       });
 
@@ -396,7 +475,7 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
     } catch (e) {
       console.error('[WebRTC] Compartilhamento de tela cancelado ou falhou:', e);
     }
-  }, [connectedChannelId, socket, stopScreenShare]);
+  }, [connectedChannelId, socket, stopScreenShare, currentUsername, currentAvatarUrl]);
 
   // Handlers do Socket.IO
   useEffect(() => {
@@ -420,6 +499,8 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
           socket.emit('signal-offer', {
             targetSocketId: targetUser.socketId,
             offer,
+            senderUsername: currentUsername,
+            senderAvatarUrl: currentAvatarUrl,
           });
         } catch (e) {
           console.error('[WebRTC] Erro ao criar oferta:', e);
@@ -430,12 +511,16 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
     const handleSignalOffer = async (data: {
       senderSocketId: string;
       senderUserId: string;
+      senderUsername?: string;
+      senderAvatarUrl?: string;
       offer: any;
+      isScreenShare?: boolean;
     }) => {
       const pc = createPeerConnection(
         data.senderSocketId,
         data.senderUserId,
-        `Usuário-${data.senderUserId.slice(0, 4)}`
+        data.senderUsername || 'Amigo',
+        data.senderAvatarUrl
       );
 
       try {
@@ -446,17 +531,31 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
         socket.emit('signal-answer', {
           targetSocketId: data.senderSocketId,
           answer,
+          senderUsername: currentUsername,
+          senderAvatarUrl: currentAvatarUrl,
         });
       } catch (e) {
         console.error('[WebRTC] Erro ao responder oferta:', e);
       }
     };
 
-    const handleSignalAnswer = async (data: { senderSocketId: string; answer: any }) => {
+    const handleSignalAnswer = async (data: {
+      senderSocketId: string;
+      senderUsername?: string;
+      senderAvatarUrl?: string;
+      answer: any;
+    }) => {
       const peer = peersRef.current.get(data.senderSocketId);
       if (peer) {
+        if (data.senderUsername && data.senderUsername !== peer.username) {
+          peer.username = data.senderUsername;
+        }
+        if (data.senderAvatarUrl) {
+          peer.avatarUrl = data.senderAvatarUrl;
+        }
         try {
           await peer.connection.setRemoteDescription(new RTCSessionDescription(data.answer));
+          updatePeersState();
         } catch (e) {
           console.error('[WebRTC] Erro ao definir resposta remota:', e);
         }
@@ -515,7 +614,7 @@ export const useWebRTC = (socket: Socket | null, currentUserId?: string) => {
       socket.off('user-left-voice', handleUserLeftVoice);
       socket.off('user-speaking-changed', handleUserSpeakingChanged);
     };
-  }, [socket, currentUserId, createPeerConnection, updatePeersState]);
+  }, [socket, currentUserId, currentUsername, currentAvatarUrl, createPeerConnection, updatePeersState]);
 
   return {
     connectedChannelId,
