@@ -89,7 +89,7 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
 
   const peerList = Array.from(peers.values());
 
-  // Detectar qual peer está transmitindo vídeo/tela
+  // Detectar quais peers estão transmitindo vídeo/tela
   const activeStreamers = peerList.filter(
     (p) =>
       p.stream &&
@@ -97,14 +97,14 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
       p.stream.getVideoTracks().some((t) => t.enabled)
   );
 
-  // Auto-selecionar streamer se houver
+  // Auto-selecionar streamer se houver e o usuário não estiver em preview local
   useEffect(() => {
-    if (activeStreamers.length > 0 && !watchingPeerId && watchingPeerId !== '') {
+    if (activeStreamers.length > 0 && !watchingPeerId && watchingPeerId !== '' && !isScreenSharing) {
       setWatchingPeerId(activeStreamers[0].socketId);
     } else if (activeStreamers.length === 0 && watchingPeerId) {
       setWatchingPeerId(null);
     }
-  }, [activeStreamers.length]);
+  }, [activeStreamers.length, isScreenSharing]);
 
   const currentlyWatchedPeer = peerList.find((p) => p.socketId === watchingPeerId && p.stream);
 
@@ -119,7 +119,7 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
 
   return (
     <div className="flex-1 bg-[#111214] flex flex-col justify-between overflow-hidden relative select-none">
-      {/* Gerenciador Único e Invisível de Áudio dos Peers (Garante 1 único canal por peer sem eco nem duplicação) */}
+      {/* Gerenciador Único e Invisível de Áudio dos Peers (1 canal por peer, isolado contra eco) */}
       {peerList.map((peer) => {
         const isLocallyMuted = !!locallyMutedPeers[peer.socketId];
         const userVol = peerVolumes[peer.socketId] ?? 100;
@@ -141,13 +141,89 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
           <span className="text-xs text-[#949ba4] bg-[#2b2d31] px-2 py-0.5 rounded-full ml-2">
             {peerList.length + 1} conectado{peerList.length > 0 ? 's' : ''}
           </span>
+          {activeStreamers.length > 0 && (
+            <span className="text-xs text-[#f23f43] bg-[#f23f43]/15 border border-[#f23f43]/30 px-2 py-0.5 rounded-full ml-1 font-bold animate-pulse">
+              {activeStreamers.length} Transmiss{activeStreamers.length > 1 ? 'ões' : 'ão'} Ao Vivo
+            </span>
+          )}
         </div>
       </div>
 
       {/* 2. Área Central / Palco de Transmissão Expandido Total ou Grid */}
       <div className="flex-1 p-2 sm:p-4 overflow-hidden flex flex-col items-center justify-center min-h-0 w-full">
-        {/* Caso 1: VOCÊ está compartilhando tela */}
-        {isScreenSharing && screenStream && isWatchingLocalScreen ? (
+        {/* Caso 1: ASSISTINDO A TRANSMISSÃO DE UM AMIGO (Mesmo se você também estiver transmitindo) */}
+        {currentlyWatchedPeer ? (
+          <div className="w-full h-full flex flex-col items-center justify-between min-h-0 space-y-2">
+            <div
+              ref={stageContainerRef}
+              className="w-full flex-1 min-h-0 bg-black rounded-xl overflow-hidden shadow-2xl relative border border-[#2b2d31] flex items-center justify-center group"
+            >
+              <RemoteVideoView stream={currentlyWatchedPeer.stream!} />
+
+              <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white flex items-center space-x-2 border border-white/10 z-10">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#f23f43] animate-pulse" />
+                <span className="font-bold">AO VIVO (1080p 60 FPS)</span>
+                <span className="text-[#949ba4]">• Transmitido por {currentlyWatchedPeer.username}</span>
+              </div>
+
+              <div className="absolute top-3 right-3 flex items-center space-x-2 opacity-90 hover:opacity-100 transition z-10">
+                {isScreenSharing && (
+                  <button
+                    onClick={() => {
+                      setWatchingPeerId(null);
+                      setIsWatchingLocalScreen(true);
+                    }}
+                    className="bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 backdrop-blur-md transition shadow"
+                    title="Alternar para ver sua própria transmissão"
+                  >
+                    <Eye className="w-4 h-4" />
+                    <span>Ver Minha Tela</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => setWatchingPeerId('')}
+                  className="bg-[#f23f43]/90 hover:bg-[#f23f43] text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 backdrop-blur-md transition shadow-lg"
+                  title="Parar de assistir e voltar para os avatares"
+                >
+                  <EyeOff className="w-4 h-4" />
+                  <span>Parar de Assistir</span>
+                </button>
+
+                <button
+                  onClick={handleToggleFullscreen}
+                  className="p-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-white backdrop-blur-md transition border border-white/10"
+                  title="Tela Cheia"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <ParticipantStrip
+              currentUser={currentUser}
+              isSpeaking={isSpeaking}
+              isMuted={isMuted}
+              isScreenSharing={isScreenSharing}
+              peerList={peerList}
+              peerVolumes={peerVolumes}
+              locallyMutedPeers={locallyMutedPeers}
+              onSelectPeerStream={(socketId) => {
+                setWatchingPeerId(socketId);
+                setIsWatchingLocalScreen(false);
+              }}
+              onSelectLocalStream={() => {
+                setWatchingPeerId(null);
+                setIsWatchingLocalScreen(true);
+              }}
+              onContextMenu={(e, peer) => {
+                e.preventDefault();
+                setContextMenu({ x: e.clientX, y: e.clientY, peer });
+              }}
+            />
+          </div>
+        ) : isScreenSharing && screenStream && isWatchingLocalScreen ? (
+          /* Caso 2: VOCÊ está visualizando a SUA própria transmissão */
           <div className="w-full h-full flex flex-col items-center justify-between min-h-0 space-y-2">
             <div
               ref={stageContainerRef}
@@ -199,57 +275,18 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
               currentUser={currentUser}
               isSpeaking={isSpeaking}
               isMuted={isMuted}
+              isScreenSharing={isScreenSharing}
               peerList={peerList}
               peerVolumes={peerVolumes}
               locallyMutedPeers={locallyMutedPeers}
-              onContextMenu={(e, peer) => {
-                e.preventDefault();
-                setContextMenu({ x: e.clientX, y: e.clientY, peer });
+              onSelectPeerStream={(socketId) => {
+                setWatchingPeerId(socketId);
+                setIsWatchingLocalScreen(false);
               }}
-            />
-          </div>
-        ) : currentlyWatchedPeer ? (
-          /* Caso 2: VOCÊ ESTÁ ASSISTINDO A TRANSMISSÃO DE UM AMIGO */
-          <div className="w-full h-full flex flex-col items-center justify-between min-h-0 space-y-2">
-            <div
-              ref={stageContainerRef}
-              className="w-full flex-1 min-h-0 bg-black rounded-xl overflow-hidden shadow-2xl relative border border-[#2b2d31] flex items-center justify-center group"
-            >
-              <RemoteVideoView stream={currentlyWatchedPeer.stream!} />
-
-              <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white flex items-center space-x-2 border border-white/10 z-10">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#f23f43] animate-pulse" />
-                <span className="font-bold">AO VIVO (1080p 60 FPS)</span>
-                <span className="text-[#949ba4]">• Transmitido por {currentlyWatchedPeer.username}</span>
-              </div>
-
-              <div className="absolute top-3 right-3 flex items-center space-x-2 opacity-90 hover:opacity-100 transition z-10">
-                <button
-                  onClick={() => setWatchingPeerId('')}
-                  className="bg-[#f23f43]/90 hover:bg-[#f23f43] text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 backdrop-blur-md transition shadow-lg"
-                  title="Parar de assistir e voltar para os avatares"
-                >
-                  <EyeOff className="w-4 h-4" />
-                  <span>Parar de Assistir</span>
-                </button>
-
-                <button
-                  onClick={handleToggleFullscreen}
-                  className="p-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-white backdrop-blur-md transition border border-white/10"
-                  title="Tela Cheia"
-                >
-                  <Maximize2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <ParticipantStrip
-              currentUser={currentUser}
-              isSpeaking={isSpeaking}
-              isMuted={isMuted}
-              peerList={peerList}
-              peerVolumes={peerVolumes}
-              locallyMutedPeers={locallyMutedPeers}
+              onSelectLocalStream={() => {
+                setWatchingPeerId(null);
+                setIsWatchingLocalScreen(true);
+              }}
               onContextMenu={(e, peer) => {
                 e.preventDefault();
                 setContextMenu({ x: e.clientX, y: e.clientY, peer });
@@ -294,13 +331,18 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
                       <MicOff className="w-4 h-4" />
                     </div>
                   )}
+                  {isScreenSharing && (
+                    <span className="absolute -top-2 -right-2 bg-[#f23f43] text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow animate-pulse">
+                      AO VIVO
+                    </span>
+                  )}
                 </div>
               )}
 
               {isScreenSharing && (
                 <button
                   onClick={() => setIsWatchingLocalScreen(true)}
-                  className="mt-3 bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-semibold px-3 py-1.5 rounded-md flex items-center space-x-1.5 shadow transition"
+                  className="mt-3 bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-semibold px-3.5 py-1.5 rounded-md flex items-center space-x-1.5 shadow transition z-10"
                 >
                   <Eye className="w-3.5 h-3.5" />
                   <span>Ver Minha Tela</span>
@@ -316,7 +358,7 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
               </div>
             </div>
 
-            {/* Cards Remotos com Exibição Visual de Mudo em Tempo Real */}
+            {/* Cards Remotos com Exibição Visual de Mudo e Botão de Assistir */}
             {peerList.map((peer) => {
               const isPeerStreaming =
                 peer.stream &&
@@ -471,61 +513,111 @@ const RemoteVideoView: React.FC<{ stream: MediaStream }> = ({ stream }) => {
   );
 };
 
-// Faixa de Participantes abaixo do Palco
+// Faixa de Participantes abaixo do Palco (com troca rápida entre múltiplos streamers)
 const ParticipantStrip: React.FC<{
   currentUser: User;
   isSpeaking: boolean;
   isMuted: boolean;
+  isScreenSharing: boolean;
   peerList: PeerConnectionInfo[];
   peerVolumes: Record<string, number>;
   locallyMutedPeers: Record<string, boolean>;
+  onSelectPeerStream: (socketId: string) => void;
+  onSelectLocalStream: () => void;
   onContextMenu: (e: React.MouseEvent, peer: PeerConnectionInfo) => void;
-}> = ({ currentUser, isSpeaking, isMuted, peerList, locallyMutedPeers, onContextMenu }) => {
+}> = ({
+  currentUser,
+  isSpeaking,
+  isMuted,
+  isScreenSharing,
+  peerList,
+  locallyMutedPeers,
+  onSelectPeerStream,
+  onSelectLocalStream,
+  onContextMenu,
+}) => {
   return (
     <div className="flex items-center justify-center space-x-3 overflow-x-auto w-full py-1 shrink-0">
+      {/* Card do Usuário Local */}
       <div
-        className={`bg-[#2b2d31] rounded-xl px-4 py-2 flex items-center space-x-2 border ${
+        onClick={isScreenSharing ? onSelectLocalStream : undefined}
+        className={`bg-[#2b2d31] hover:bg-[#35373c] ${
+          isScreenSharing ? 'cursor-pointer' : ''
+        } rounded-xl px-4 py-2 flex items-center space-x-2 border transition ${
           isSpeaking ? 'border-[#23a55a] ring-2 ring-[#23a55a]/30' : 'border-transparent'
         }`}
+        title={isScreenSharing ? 'Clique para ver o preview da sua própria tela' : undefined}
       >
-        <img
-          src={
-            currentUser.avatarUrl ||
-            `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
-              currentUser.username
-            )}`
-          }
-          alt={currentUser.username}
-          className="w-8 h-8 rounded-full bg-[#1e1f22] object-cover"
-        />
+        <div className="relative">
+          <img
+            src={
+              currentUser.avatarUrl ||
+              `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
+                currentUser.username
+              )}`
+            }
+            alt={currentUser.username}
+            className="w-8 h-8 rounded-full bg-[#1e1f22] object-cover"
+          />
+          {isScreenSharing && (
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#f23f43] ring-1 ring-[#2b2d31] animate-pulse" />
+          )}
+        </div>
         <span className="text-xs font-semibold text-white truncate">
           {currentUser.username} (Você)
         </span>
         {isMuted && <MicOff className="w-3.5 h-3.5 text-[#f23f43]" />}
+        {isScreenSharing && (
+          <span className="text-[10px] bg-[#f23f43] text-white px-1.5 py-0.5 rounded font-bold">
+            AO VIVO
+          </span>
+        )}
       </div>
 
+      {/* Cards dos Amigos (com alternância instantânea de tela ao clicar) */}
       {peerList.map((peer) => {
         const isLocallyMuted = !!locallyMutedPeers[peer.socketId];
+        const isStreaming =
+          peer.stream &&
+          peer.stream.getVideoTracks().length > 0 &&
+          peer.stream.getVideoTracks().some((t) => t.enabled);
+
         return (
           <div
             key={peer.socketId}
+            onClick={isStreaming ? () => onSelectPeerStream(peer.socketId) : undefined}
             onContextMenu={(e) => onContextMenu(e, peer)}
             className={`bg-[#2b2d31] hover:bg-[#35373c] cursor-pointer rounded-xl px-4 py-2 flex items-center space-x-2 border transition ${
               peer.isSpeaking ? 'border-[#23a55a] ring-2 ring-[#23a55a]/30' : 'border-transparent'
             }`}
-            title="Clique com botão direito para ajustar volume"
+            title={
+              isStreaming
+                ? 'Clique com botão esquerdo para assistir a tela deste amigo (ou direito para volume)'
+                : 'Clique com botão direito para ajustar volume'
+            }
           >
-            <img
-              src={
-                peer.avatarUrl ||
-                `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
-                  peer.username
-                )}`
-              }
-              alt={peer.username}
-              className="w-8 h-8 rounded-full bg-[#1e1f22] object-cover"
-            />
+            <div className="relative">
+              <img
+                src={
+                  peer.avatarUrl ||
+                  `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
+                    peer.username
+                  )}`
+                }
+                alt={peer.username}
+                className="w-8 h-8 rounded-full bg-[#1e1f22] object-cover"
+              />
+              {isStreaming && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#f23f43] ring-1 ring-[#2b2d31] animate-pulse" />
+              )}
+            </div>
             <span className="text-xs font-semibold text-white truncate">{peer.username}</span>
+            {isStreaming && (
+              <span className="text-[10px] bg-[#23a55a] text-white px-1.5 py-0.5 rounded font-bold animate-pulse flex items-center space-x-0.5">
+                <Tv className="w-2.5 h-2.5" />
+                <span>VER</span>
+              </span>
+            )}
             {peer.isMuted && <MicOff className="w-3.5 h-3.5 text-[#f23f43]" />}
             {isLocallyMuted && !peer.isMuted && <VolumeX className="w-3.5 h-3.5 text-[#f23f43]" />}
           </div>
