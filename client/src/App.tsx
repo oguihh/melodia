@@ -124,6 +124,18 @@ export function App() {
   useEffect(() => {
     if (!socketInstance) return;
 
+    // Receber lista inicial de todos os canais de voz ativos
+    const handleInitialVoiceStates = (
+      states: { channelId: string; participants: VoiceParticipant[] }[]
+    ) => {
+      const allParticipants: VoiceParticipant[] = [];
+      for (const s of states) {
+        allParticipants.push(...s.participants);
+      }
+      setVoiceParticipants(allParticipants);
+    };
+
+    // Atualização em tempo real quando alguém entra/sai/fala
     const handleVoiceChannelUpdated = (data: {
       channelId: string;
       participants: VoiceParticipant[];
@@ -151,11 +163,16 @@ export function App() {
       loadDMs();
     };
 
+    socketInstance.on('initial-voice-states', handleInitialVoiceStates);
     socketInstance.on('voice-state-channel-updated', handleVoiceChannelUpdated);
     socketInstance.on('dm-notification', handleDmNotification);
     socketInstance.on('friend-request-accepted', handleFriendAccepted);
 
+    // Solicitar estados atuais imediatamente
+    socketInstance.emit('get-voice-states');
+
     return () => {
+      socketInstance.off('initial-voice-states', handleInitialVoiceStates);
       socketInstance.off('voice-state-channel-updated', handleVoiceChannelUpdated);
       socketInstance.off('dm-notification', handleDmNotification);
       socketInstance.off('friend-request-accepted', handleFriendAccepted);

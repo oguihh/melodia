@@ -52,6 +52,13 @@ export const setupSocketHandlers = (io: Server) => {
 
     console.log(`[MELODIA Socket] Conectado: ${user.username} (${socket.id})`);
 
+    // Enviar imediatamente para o novo usuário conectado quem já está em chamada em todos os canais
+    sendAllVoiceStates(socket);
+
+    socket.on('get-voice-states', () => {
+      sendAllVoiceStates(socket);
+    });
+
     // Entrar em salas de texto
     socket.on('join-channel', (channelId: string) => {
       socket.join(`channel-${channelId}`);
@@ -212,6 +219,7 @@ export const setupSocketHandlers = (io: Server) => {
 
       socket.to(`voice-${channelId}`).emit('user-joined-voice', participant);
 
+      // Transmite para TODOS no servidor (quem está dentro ou fora da call)
       io.emit('voice-state-channel-updated', {
         channelId,
         participants: Array.from(room.values()),
@@ -278,6 +286,11 @@ export const setupSocketHandlers = (io: Server) => {
             userId: user.id,
             isSpeaking: data.isSpeaking,
           });
+
+          io.emit('voice-state-channel-updated', {
+            channelId,
+            participants: Array.from(room.values()),
+          });
           break;
         }
       }
@@ -289,6 +302,17 @@ export const setupSocketHandlers = (io: Server) => {
       socketUserMap.delete(socket.id);
     });
   });
+
+  function sendAllVoiceStates(socket: Socket) {
+    const allStates: { channelId: string; participants: VoiceParticipant[] }[] = [];
+    for (const [channelId, room] of voiceRooms.entries()) {
+      allStates.push({
+        channelId,
+        participants: Array.from(room.values()),
+      });
+    }
+    socket.emit('initial-voice-states', allStates);
+  }
 
   function leaveCurrentVoice(socket: Socket) {
     const user = socket.data.user as UserPayload;
