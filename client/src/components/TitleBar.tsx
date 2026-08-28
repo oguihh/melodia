@@ -13,37 +13,41 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   isVoiceConnected,
 }) => {
   const [isMaximized, setIsMaximized] = useState(false);
-  const isElectron = typeof window !== 'undefined' && (window as any).electron !== undefined;
 
-  useEffect(() => {
-    const handleResize = () => {
-      // Estado de maximização se aplicável
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  const getElectronAPI = () => {
+    if (typeof window === 'undefined') return null;
+    return (window as any).electronAPI || (window as any).electron || null;
+  };
+
+  const isElectron = Boolean(getElectronAPI());
 
   const handleMinimize = () => {
-    if (isElectron) {
-      (window as any).electron.minimize();
+    const api = getElectronAPI();
+    if (api?.minimize) {
+      api.minimize();
     }
   };
 
   const handleMaximize = () => {
-    if (isElectron) {
-      (window as any).electron.maximize();
+    const api = getElectronAPI();
+    if (api?.maximize) {
+      api.maximize();
       setIsMaximized(!isMaximized);
     }
   };
 
   const handleClose = () => {
-    if (isElectron) {
-      (window as any).electron.close();
+    const api = getElectronAPI();
+    if (api?.close) {
+      api.close();
     }
   };
 
   return (
-    <header className="h-8 bg-[#1e1f22] text-[#949ba4] flex items-center justify-between px-2 select-none border-b border-[#111214] z-50 shrink-0 text-xs font-semibold app-drag-region">
+    <header
+      onDoubleClick={isElectron ? handleMaximize : undefined}
+      className="h-8 bg-[#1e1f22] text-[#949ba4] flex items-center justify-between px-2 select-none border-b border-[#111214] z-50 shrink-0 text-xs font-semibold app-drag-region"
+    >
       {/* Esquerda: Logo Oficial da MELODIA e Status de Voz */}
       <div className="flex items-center space-x-2 no-drag">
         <div className="flex items-center space-x-2 font-bold text-white tracking-wide">
