@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Music } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { Server } from '../types';
 
 interface ServerSidebarProps {
@@ -17,7 +17,7 @@ export const ServerSidebar: React.FC<ServerSidebarProps> = ({
 }) => {
   return (
     <nav className="w-[72px] bg-[#1e1f22] flex flex-col items-center py-3 space-y-2 select-none z-30 shrink-0">
-      {/* Botão MELODIA / Direct Messages (Home) */}
+      {/* Botão MELODIA Oficial / Direct Messages (Home) */}
       <div className="relative group flex items-center justify-center w-full">
         <div
           className={`absolute left-0 bg-white rounded-r-full transition-all duration-200 ${
@@ -28,14 +28,18 @@ export const ServerSidebar: React.FC<ServerSidebarProps> = ({
         />
         <button
           onClick={() => onSelectServer(null)}
-          className={`w-12 h-12 rounded-[24px] hover:rounded-[16px] flex items-center justify-center transition-all duration-200 group-hover:bg-[#5865f2] ${
+          className={`w-12 h-12 rounded-[24px] hover:rounded-[16px] flex items-center justify-center transition-all duration-200 overflow-hidden shadow-md group-hover:scale-105 ${
             activeServerId === null
-              ? 'bg-[#5865f2] rounded-[16px] text-white shadow-lg'
-              : 'bg-[#313338] text-[#dbdee1]'
+              ? 'bg-[#5865f2] rounded-[16px] ring-2 ring-[#5865f2]'
+              : 'bg-[#313338] hover:bg-[#5865f2]'
           }`}
           title="Mensagens Diretas e Amigos"
         >
-          <Music className="w-6 h-6" />
+          <img
+            src="/logo.png"
+            alt="MELODIA"
+            className="w-full h-full object-cover"
+          />
         </button>
       </div>
 

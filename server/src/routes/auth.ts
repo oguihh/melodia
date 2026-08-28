@@ -152,15 +152,34 @@ router.get('/me', authenticateJWT, async (req: AuthRequest, res: Response): Prom
   }
 });
 
-// Atualizar perfil
+// Atualizar perfil (Avatar, Nome de Usuário e Status)
 router.patch('/profile', authenticateJWT, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { avatarUrl, customStatus } = req.body;
+    const { avatarUrl, customStatus, username } = req.body;
+
+    if (username && typeof username === 'string') {
+      const cleanUsername = username.trim();
+      if (cleanUsername.length < 3) {
+        res.status(400).json({ error: 'Nome de usuário deve ter pelo menos 3 caracteres' });
+        return;
+      }
+
+      const existing = await prisma.user.findUnique({
+        where: { username: cleanUsername },
+      });
+
+      if (existing && existing.id !== req.userId) {
+        res.status(409).json({ error: `O nome de usuário "${cleanUsername}" já está em uso` });
+        return;
+      }
+    }
+
     const user = await prisma.user.update({
       where: { id: req.userId },
       data: {
         ...(avatarUrl !== undefined && { avatarUrl }),
         ...(customStatus !== undefined && { customStatus }),
+        ...(username !== undefined && { username: username.trim() }),
       },
       select: {
         id: true,
@@ -173,6 +192,7 @@ router.patch('/profile', authenticateJWT, async (req: AuthRequest, res: Response
 
     res.json({ user });
   } catch (error) {
+    console.error('Erro ao atualizar perfil:', error);
     res.status(500).json({ error: 'Erro ao atualizar perfil' });
   }
 });

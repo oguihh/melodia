@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Music, LogIn, UserPlus, Lock, Mail, User as UserIcon } from 'lucide-react';
+import { LogIn, UserPlus, Lock, Mail, User as UserIcon } from 'lucide-react';
 import { apiRequest, setStoredToken } from '../lib/api';
 import { User as UserType } from '../types';
 
@@ -51,12 +51,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn select-none">
-      <div className="w-full max-w-md bg-[#313338] rounded-xl shadow-2xl overflow-hidden border border-[#232428]">
-        {/* Header MELODIA */}
+      <div className="w-full max-w-md bg-[#313338] rounded-2xl shadow-2xl overflow-hidden border border-[#232428]">
+        {/* Header MELODIA com Logo Oficial */}
         <div className="bg-gradient-to-r from-[#5865f2] to-[#4752c4] p-6 text-center text-white relative">
-          <div className="inline-flex p-3 rounded-2xl bg-white/10 backdrop-blur-md mb-2 shadow-inner">
-            <Music className="w-8 h-8 text-white" />
-          </div>
+          <img
+            src="/logo.png"
+            alt="MELODIA Logo"
+            className="w-16 h-16 rounded-2xl mx-auto mb-2 object-cover shadow-2xl ring-2 ring-white/20"
+          />
           <h2 className="text-2xl font-black tracking-wider">MELODIA</h2>
           <p className="text-xs text-white/80 mt-1">
             {isRegister

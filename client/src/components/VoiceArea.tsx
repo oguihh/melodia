@@ -16,6 +16,7 @@ import {
   Tv,
 } from 'lucide-react';
 import { Channel, User, PeerConnectionInfo } from '../types';
+import { UserContextMenu } from './UserContextMenu';
 
 interface VoiceAreaProps {
   channel: Channel;
@@ -57,6 +58,15 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
   const [watchingPeerId, setWatchingPeerId] = useState<string | null>(null);
   const [isWatchingLocalScreen, setIsWatchingLocalScreen] = useState<boolean>(true);
 
+  // Volumes individuais por usuário (0 a 200%) e mudo local
+  const [peerVolumes, setPeerVolumes] = useState<Record<string, number>>({});
+  const [locallyMutedPeers, setLocallyMutedPeers] = useState<Record<string, boolean>>({});
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    peer: PeerConnectionInfo;
+  } | null>(null);
+
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const localScreenRef = useRef<HTMLVideoElement>(null);
   const stageContainerRef = useRef<HTMLDivElement>(null);
@@ -87,7 +97,7 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
       p.stream.getVideoTracks().some((t) => t.enabled)
   );
 
-  // Auto-selecionar o primeiro streamer se o usuário ainda não escolheu parar de ver
+  // Auto-selecionar streamer se houver
   useEffect(() => {
     if (activeStreamers.length > 0 && !watchingPeerId && watchingPeerId !== '') {
       setWatchingPeerId(activeStreamers[0].socketId);
@@ -122,7 +132,7 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
 
       {/* 2. Área Central / Palco de Transmissão ou Grid */}
       <div className="flex-1 p-4 overflow-y-auto flex flex-col items-center justify-center space-y-4">
-        {/* Caso 1: VOCÊ está compartilhando tela e está com o preview expandido */}
+        {/* Caso 1: VOCÊ está compartilhando tela */}
         {isScreenSharing && screenStream && isWatchingLocalScreen ? (
           <div className="w-full h-full max-w-5xl flex flex-col items-center justify-center space-y-3">
             <div
@@ -137,14 +147,12 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
                 className="w-full h-full object-contain"
               />
 
-              {/* Banner Superior da Transmissão */}
               <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white flex items-center space-x-2 border border-white/10">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#f23f43] animate-pulse" />
                 <span className="font-bold">AO VIVO (1080p 60 FPS)</span>
                 <span className="text-[#949ba4]">• Você está transmitindo</span>
               </div>
 
-              {/* Controles do Palco */}
               <div className="absolute top-3 right-3 flex items-center space-x-2 opacity-90 hover:opacity-100 transition">
                 <button
                   onClick={() => setIsWatchingLocalScreen(false)}
@@ -173,12 +181,17 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
               </div>
             </div>
 
-            {/* Faixa de Participantes Abaixo do Palco */}
             <ParticipantStrip
               currentUser={currentUser}
               isSpeaking={isSpeaking}
               isMuted={isMuted}
               peerList={peerList}
+              peerVolumes={peerVolumes}
+              locallyMutedPeers={locallyMutedPeers}
+              onContextMenu={(e, peer) => {
+                e.preventDefault();
+                setContextMenu({ x: e.clientX, y: e.clientY, peer });
+              }}
             />
           </div>
         ) : currentlyWatchedPeer ? (
@@ -188,16 +201,21 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
               ref={stageContainerRef}
               className="w-full h-[65vh] bg-black rounded-xl overflow-hidden shadow-2xl relative border border-[#2b2d31] flex items-center justify-center group"
             >
-              <RemoteVideoView stream={currentlyWatchedPeer.stream!} />
+              <RemoteVideoView
+                stream={currentlyWatchedPeer.stream!}
+                volume={
+                  locallyMutedPeers[currentlyWatchedPeer.socketId]
+                    ? 0
+                    : (peerVolumes[currentlyWatchedPeer.socketId] ?? 100) / 100
+                }
+              />
 
-              {/* Banner de Identificação */}
               <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white flex items-center space-x-2 border border-white/10">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#f23f43] animate-pulse" />
                 <span className="font-bold">AO VIVO (1080p 60 FPS)</span>
                 <span className="text-[#949ba4]">• Transmitido por {currentlyWatchedPeer.username}</span>
               </div>
 
-              {/* Botões do Palco: Parar de Assistir e Tela Cheia */}
               <div className="absolute top-3 right-3 flex items-center space-x-2 opacity-90 hover:opacity-100 transition">
                 <button
                   onClick={() => setWatchingPeerId('')}
@@ -218,16 +236,21 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
               </div>
             </div>
 
-            {/* Faixa de Participantes Abaixo do Palco */}
             <ParticipantStrip
               currentUser={currentUser}
               isSpeaking={isSpeaking}
               isMuted={isMuted}
               peerList={peerList}
+              peerVolumes={peerVolumes}
+              locallyMutedPeers={locallyMutedPeers}
+              onContextMenu={(e, peer) => {
+                e.preventDefault();
+                setContextMenu({ x: e.clientX, y: e.clientY, peer });
+              }}
             />
           </div>
         ) : (
-          /* Caso 3: GRID NORMAL DE CARDS / AVATARES */
+          /* Caso 3: GRID NORMAL DE CARDS */
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 w-full max-w-6xl">
             {/* Card Local */}
             <div
@@ -255,7 +278,7 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
                       )}`
                     }
                     alt={currentUser.username}
-                    className={`w-24 h-24 rounded-full bg-[#1e1f22] transition-transform ${
+                    className={`w-24 h-24 rounded-full bg-[#1e1f22] object-cover transition-transform ${
                       isSpeaking ? 'scale-105 ring-4 ring-[#23a55a]' : ''
                     }`}
                   />
@@ -267,7 +290,6 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
                 </div>
               )}
 
-              {/* Botão de Expandir se você estiver transmitindo tela */}
               {isScreenSharing && (
                 <button
                   onClick={() => setIsWatchingLocalScreen(true)}
@@ -287,19 +309,27 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
               </div>
             </div>
 
-            {/* Cards de Amigos Remotos */}
+            {/* Cards Remotos com Suporte a Botão Direito (Ajustar Volume) */}
             {peerList.map((peer) => {
               const isPeerStreaming =
                 peer.stream &&
                 peer.stream.getVideoTracks().length > 0 &&
                 peer.stream.getVideoTracks().some((t) => t.enabled);
 
+              const userVolume = peerVolumes[peer.socketId] ?? 100;
+              const isLocallyMuted = !!locallyMutedPeers[peer.socketId];
+
               return (
                 <RemotePeerCard
                   key={peer.socketId}
                   peer={peer}
                   isStreaming={isPeerStreaming}
+                  volume={isLocallyMuted ? 0 : userVolume / 100}
                   onWatchStream={() => setWatchingPeerId(peer.socketId)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setContextMenu({ x: e.clientX, y: e.clientY, peer });
+                  }}
                 />
               );
             })}
@@ -307,7 +337,32 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
         )}
       </div>
 
-      {/* 3. Barra Flutuante de Controles */}
+      {/* 3. Menu de Contexto ao Clicar com Botão Direito */}
+      {contextMenu && (
+        <UserContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          username={contextMenu.peer.username}
+          avatarUrl={contextMenu.peer.avatarUrl}
+          volume={peerVolumes[contextMenu.peer.socketId] ?? 100}
+          isLocallyMuted={!!locallyMutedPeers[contextMenu.peer.socketId]}
+          onVolumeChange={(newVol) => {
+            setPeerVolumes((prev) => ({
+              ...prev,
+              [contextMenu.peer.socketId]: newVol,
+            }));
+          }}
+          onToggleLocalMute={() => {
+            setLocallyMutedPeers((prev) => ({
+              ...prev,
+              [contextMenu.peer.socketId]: !prev[contextMenu.peer.socketId],
+            }));
+          }}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* 4. Barra Flutuante de Controles */}
       <div className="h-20 bg-[#1e1f22]/90 backdrop-blur-md border-t border-[#2b2d31] px-6 flex items-center justify-center space-x-4 shrink-0 z-20">
         <button
           onClick={onToggleMute}
@@ -370,20 +425,24 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
 };
 
 // Renderizador do Vídeo Remoto no Palco
-const RemoteVideoView: React.FC<{ stream: MediaStream }> = ({ stream }) => {
+const RemoteVideoView: React.FC<{ stream: MediaStream; volume: number }> = ({
+  stream,
+  volume,
+}) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.srcObject = stream;
+      audioRef.current.volume = Math.min(1, Math.max(0, volume));
       audioRef.current.play().catch(() => {});
     }
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
       videoRef.current.play().catch(() => {});
     }
-  }, [stream]);
+  }, [stream, volume]);
 
   return (
     <>
@@ -398,13 +457,16 @@ const RemoteVideoView: React.FC<{ stream: MediaStream }> = ({ stream }) => {
   );
 };
 
-// Faixa de Participantes abaixo do Palco de Transmissão
+// Faixa de Participantes abaixo do Palco
 const ParticipantStrip: React.FC<{
   currentUser: User;
   isSpeaking: boolean;
   isMuted: boolean;
   peerList: PeerConnectionInfo[];
-}> = ({ currentUser, isSpeaking, isMuted, peerList }) => {
+  peerVolumes: Record<string, number>;
+  locallyMutedPeers: Record<string, boolean>;
+  onContextMenu: (e: React.MouseEvent, peer: PeerConnectionInfo) => void;
+}> = ({ currentUser, isSpeaking, isMuted, peerList, peerVolumes, locallyMutedPeers, onContextMenu }) => {
   return (
     <div className="flex items-center justify-center space-x-3 overflow-x-auto w-full py-1">
       <div
@@ -420,7 +482,7 @@ const ParticipantStrip: React.FC<{
             )}`
           }
           alt={currentUser.username}
-          className="w-8 h-8 rounded-full bg-[#1e1f22]"
+          className="w-8 h-8 rounded-full bg-[#1e1f22] object-cover"
         />
         <span className="text-xs font-semibold text-white truncate">
           {currentUser.username} (Você)
@@ -428,52 +490,63 @@ const ParticipantStrip: React.FC<{
         {isMuted && <MicOff className="w-3.5 h-3.5 text-[#f23f43]" />}
       </div>
 
-      {peerList.map((peer) => (
-        <div
-          key={peer.socketId}
-          className={`bg-[#2b2d31] rounded-xl px-4 py-2 flex items-center space-x-2 border ${
-            peer.isSpeaking ? 'border-[#23a55a] ring-2 ring-[#23a55a]/30' : 'border-transparent'
-          }`}
-        >
-          <img
-            src={
-              peer.avatarUrl ||
-              `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
-                peer.username
-              )}`
-            }
-            alt={peer.username}
-            className="w-8 h-8 rounded-full bg-[#1e1f22]"
-          />
-          <span className="text-xs font-semibold text-white truncate">{peer.username}</span>
-        </div>
-      ))}
+      {peerList.map((peer) => {
+        const isLocallyMuted = !!locallyMutedPeers[peer.socketId];
+        return (
+          <div
+            key={peer.socketId}
+            onContextMenu={(e) => onContextMenu(e, peer)}
+            className={`bg-[#2b2d31] hover:bg-[#35373c] cursor-pointer rounded-xl px-4 py-2 flex items-center space-x-2 border transition ${
+              peer.isSpeaking ? 'border-[#23a55a] ring-2 ring-[#23a55a]/30' : 'border-transparent'
+            }`}
+            title="Clique com botão direito para ajustar volume"
+          >
+            <img
+              src={
+                peer.avatarUrl ||
+                `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
+                  peer.username
+                )}`
+              }
+              alt={peer.username}
+              className="w-8 h-8 rounded-full bg-[#1e1f22] object-cover"
+            />
+            <span className="text-xs font-semibold text-white truncate">{peer.username}</span>
+            {isLocallyMuted && <VolumeX className="w-3.5 h-3.5 text-[#f23f43]" />}
+          </div>
+        );
+      })}
     </div>
   );
 };
 
-// Card de Participante Remoto no Grid
+// Card de Participante Remoto no Grid (com controle de volume por botão direito)
 const RemotePeerCard: React.FC<{
   peer: PeerConnectionInfo;
   isStreaming?: boolean;
+  volume: number;
   onWatchStream: () => void;
-}> = ({ peer, isStreaming, onWatchStream }) => {
+  onContextMenu: (e: React.MouseEvent) => void;
+}> = ({ peer, isStreaming, volume, onWatchStream, onContextMenu }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
     if (audioRef.current && peer.stream) {
       audioRef.current.srcObject = peer.stream;
+      audioRef.current.volume = Math.min(1, Math.max(0, volume));
       audioRef.current.play().catch(() => {});
     }
-  }, [peer.stream]);
+  }, [peer.stream, volume]);
 
   return (
     <div
-      className={`bg-[#2b2d31] rounded-2xl p-6 flex flex-col items-center justify-center relative min-h-[220px] border-2 transition-all duration-200 shadow-lg ${
+      onContextMenu={onContextMenu}
+      className={`bg-[#2b2d31] hover:bg-[#32353b] cursor-pointer rounded-2xl p-6 flex flex-col items-center justify-center relative min-h-[220px] border-2 transition-all duration-200 shadow-lg ${
         peer.isSpeaking
           ? 'border-[#23a55a] ring-4 ring-[#23a55a]/20 scale-[1.02]'
           : 'border-transparent'
       }`}
+      title="Clique com botão direito para ajustar volume deste usuário"
     >
       <audio ref={audioRef} autoPlay playsInline />
 
@@ -486,7 +559,7 @@ const RemotePeerCard: React.FC<{
             )}`
           }
           alt={peer.username}
-          className={`w-24 h-24 rounded-full bg-[#1e1f22] transition-transform ${
+          className={`w-24 h-24 rounded-full bg-[#1e1f22] object-cover transition-transform ${
             peer.isSpeaking ? 'scale-105 ring-4 ring-[#23a55a]' : ''
           }`}
         />
@@ -498,10 +571,13 @@ const RemotePeerCard: React.FC<{
         )}
       </div>
 
-      {/* Botão de Assistir Transmissão (quando amigo está transmitindo tela) */}
+      {/* Botão de Assistir Transmissão */}
       {isStreaming && (
         <button
-          onClick={onWatchStream}
+          onClick={(e) => {
+            e.stopPropagation();
+            onWatchStream();
+          }}
           className="mt-3 bg-[#23a55a] hover:bg-[#209451] text-white text-xs font-bold px-3.5 py-1.5 rounded-md flex items-center space-x-1.5 shadow-md hover:scale-105 transition duration-150"
         >
           <Tv className="w-3.5 h-3.5" />
@@ -511,6 +587,7 @@ const RemotePeerCard: React.FC<{
 
       <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white">
         <span className="font-semibold truncate">{peer.username}</span>
+        {volume === 0 && <VolumeX className="w-3.5 h-3.5 text-[#f23f43]" />}
       </div>
     </div>
   );

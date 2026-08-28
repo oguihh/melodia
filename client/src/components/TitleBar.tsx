@@ -1,5 +1,5 @@
-import React from 'react';
-import { Minus, Square, X, Radio, Music } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Minus, Square, X, Copy, Radio } from 'lucide-react';
 
 interface TitleBarProps {
   serverName?: string;
@@ -12,74 +12,95 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   channelName,
   isVoiceConnected,
 }) => {
-  const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
+  const [isMaximized, setIsMaximized] = useState(false);
+  const isElectron = typeof window !== 'undefined' && (window as any).electron !== undefined;
+
+  useEffect(() => {
+    const handleResize = () => {
+      // Estado de maximização se aplicável
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleMinimize = () => {
-    (window as any).electronAPI?.minimize();
+    if (isElectron) {
+      (window as any).electron.minimize();
+    }
   };
 
   const handleMaximize = () => {
-    (window as any).electronAPI?.maximize();
+    if (isElectron) {
+      (window as any).electron.maximize();
+      setIsMaximized(!isMaximized);
+    }
   };
 
   const handleClose = () => {
-    (window as any).electronAPI?.close();
+    if (isElectron) {
+      (window as any).electron.close();
+    }
   };
 
   return (
-    <div className="h-7 bg-[#1e1f22] select-none flex items-center justify-between px-3 text-xs text-[#949ba4] border-b border-[#111214] titlebar-drag z-50">
-      {/* Lado Esquerdo: Logo & Nome MELODIA */}
-      <div className="flex items-center space-x-2 titlebar-no-drag">
-        <div className="flex items-center space-x-1.5 font-black text-white tracking-wider text-[11px]">
-          <div className="w-4 h-4 rounded-md bg-[#5865f2] flex items-center justify-center text-white shadow-sm">
-            <Music className="w-2.5 h-2.5" />
-          </div>
-          <span>MELODIA</span>
+    <header className="h-8 bg-[#1e1f22] text-[#949ba4] flex items-center justify-between px-2 select-none border-b border-[#111214] z-50 shrink-0 text-xs font-semibold app-drag-region">
+      {/* Esquerda: Logo Oficial da MELODIA e Status de Voz */}
+      <div className="flex items-center space-x-2 no-drag">
+        <div className="flex items-center space-x-2 font-bold text-white tracking-wide">
+          <img
+            src="/logo.png"
+            alt="MELODIA Logo"
+            className="w-5 h-5 rounded-full object-cover shadow"
+            onError={(e) => {
+              (e.target as HTMLElement).style.display = 'none';
+            }}
+          />
+          <span className="bg-gradient-to-r from-[#5865f2] to-[#00a8fc] bg-clip-text text-transparent font-black tracking-wider">
+            MELODIA
+          </span>
         </div>
 
         {isVoiceConnected && (
-          <div className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-[#23a55a]/15 text-[#23a55a] text-[11px] font-semibold border border-[#23a55a]/30">
+          <div className="flex items-center space-x-1.5 bg-[#23a55a]/15 text-[#23a55a] px-2 py-0.5 rounded-full text-[10px] font-bold border border-[#23a55a]/30 ml-2">
             <Radio className="w-3 h-3 animate-pulse" />
             <span>Voz Conectada</span>
           </div>
         )}
       </div>
 
-      {/* Centro: Título da Sessão */}
-      <div className="text-center font-medium text-[#dbdee1] truncate max-w-xs text-xs">
-        {serverName ? `${serverName} ${channelName ? `• #${channelName}` : ''}` : 'Mensagens Diretas'}
+      {/* Centro: Nome do Servidor e Canal */}
+      <div className="text-center font-medium text-[#dbdee1] truncate px-4">
+        {serverName ? `${serverName} • #${channelName || 'geral'}` : 'MELODIA'}
       </div>
 
-      {/* Lado Direito: Controles de Janela (para Electron) */}
-      <div className="flex items-center space-x-1 titlebar-no-drag">
-        {isElectron ? (
+      {/* Direita: Controles de Janela do Windows */}
+      <div className="flex items-center space-x-1 no-drag">
+        {isElectron && (
           <>
             <button
               onClick={handleMinimize}
-              className="w-7 h-6 flex items-center justify-center hover:bg-[#35373c] text-[#dbdee1] transition"
+              className="w-7 h-6 flex items-center justify-center hover:bg-[#35373c] hover:text-white rounded transition"
               title="Minimizar"
             >
               <Minus className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={handleMaximize}
-              className="w-7 h-6 flex items-center justify-center hover:bg-[#35373c] text-[#dbdee1] transition"
-              title="Maximizar"
+              className="w-7 h-6 flex items-center justify-center hover:bg-[#35373c] hover:text-white rounded transition"
+              title={isMaximized ? 'Restaurar' : 'Maximizar'}
             >
-              <Square className="w-3 h-3" />
+              {isMaximized ? <Copy className="w-3 h-3 rotate-180" /> : <Square className="w-3 h-3" />}
             </button>
             <button
               onClick={handleClose}
-              className="w-7 h-6 flex items-center justify-center hover:bg-[#f23f43] hover:text-white text-[#dbdee1] transition"
+              className="w-7 h-6 flex items-center justify-center hover:bg-[#f23f43] hover:text-white rounded transition"
               title="Fechar"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           </>
-        ) : (
-          <div className="w-2 h-2 rounded-full bg-[#23a55a]" title="Online" />
         )}
       </div>
-    </div>
+    </header>
   );
 };
