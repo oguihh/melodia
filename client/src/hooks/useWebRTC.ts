@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
 import { PeerConnectionInfo, VoiceParticipant, ScreenShareQuality } from '../types';
-import { createKrispNoiseProcessor, NoiseProcessor } from '../lib/noiseSuppression';
 
 const RTC_CONFIG: RTCConfiguration = {
   iceServers: [
@@ -32,11 +31,13 @@ export const useWebRTC = (
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
 
-  const rawLocalStreamRef = useRef<MediaStream | null>(null);
-  const processedStreamRef = useRef<MediaStream | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
-  const noiseProcessorRef = useRef<NoiseProcessor | null>(null);
   const peersRef = useRef<Map<string, PeerConnectionInfo>>(new Map());
+
+  // VAD (Detecção de voz para borda verde)
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const vadAnimFrameRef = useRef<number | null>(null);
 
   const updatePeersState = useCallback(() => {
     setPeers(new Map(peersRef.current));
@@ -76,18 +77,17 @@ export const useWebRTC = (
 
     const pc = new RTCPeerConnection(RTC_CONFIG);
 
-    // Adicionar áudio limpo processado com cancelamento de ruído Krisp
-    const audioStreamToSend = processedStreamRef.current || rawLocalStreamRef.current;
-    if (audioStreamToSend) {
-      audioStreamToSend.getAudioTracks().forEach((track) => {
-        pc.addTrack(track, audioStreamToSend);
+    // Adicionar áudio com cancelamento acústico de eco (AEC3 nativo do WebRTC)
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach((track) => {
+        pc.addTrack(track, localStreamRef.current!);
       });
     }
 
     // Adicionar vídeo da câmera se estiver ativa
-    if (rawLocalStreamRef.current) {
-      rawLocalStreamRef.current.getVideoTracks().forEach((track) => {
-        pc.addTrack(track, rawLocalStreamRef.current!);
+    if (localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach((track) => {
+        pc.addTrack(track, localStreamRef.current!);
       });
     }
 
@@ -136,41 +136,96 @@ export const useWebRTC = (
     return pc;
   }, [socket, updatePeersState]);
 
-  // Entrar em Canal de Voz com Processador de Ruído Krisp em tempo real
+  // Iniciar monitoramento VAD (Visual apenas, sem mexer na track enviada ao WebRTC)
+  const startVAD = (stream: MediaStream) => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const audioCtx = new AudioCtx({ sampleRate: 48000 });
+      audioCtxRef.current = audioCtx;
+
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.3;
+      source.connect(analyser);
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      let speaking = false;
+
+      const checkAudio = () => {
+        if (!analyser || !audioCtxRef.current) return;
+
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        const avg = sum / dataArray.length;
+        const isNowSpeaking = avg > 12;
+
+        if (isNowSpeaking !== speaking) {
+          speaking = isNowSpeaking;
+          setIsSpeaking(speaking);
+          socket?.emit('speaking-state', { isSpeaking: speaking });
+        }
+
+        vadAnimFrameRef.current = requestAnimationFrame(checkAudio);
+      };
+
+      vadAnimFrameRef.current = requestAnimationFrame(checkAudio);
+    } catch (e) {
+      console.warn('VAD não pôde ser iniciado:', e);
+    }
+  };
+
+  const stopVAD = () => {
+    if (vadAnimFrameRef.current) {
+      cancelAnimationFrame(vadAnimFrameRef.current);
+      vadAnimFrameRef.current = null;
+    }
+    if (audioCtxRef.current) {
+      try {
+        audioCtxRef.current.close();
+      } catch (e) {}
+      audioCtxRef.current = null;
+    }
+  };
+
+  // Entrar em Canal de Voz com Cancelamento de Eco AEC3 Nativo
   const joinVoiceChannel = useCallback(async (
     channelId: string,
     serverId: string,
     avatarUrl?: string
   ) => {
     try {
-      if (noiseProcessorRef.current) {
-        noiseProcessorRef.current.cleanup();
-        noiseProcessorRef.current = null;
-      }
+      stopVAD();
 
-      // Captura do microfone com parâmetros nativos otimizados
+      // Captura de áudio com cancelamento de eco rigoroso (AEC3), AGC e supressão de ruído nativa
       const rawStream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 48000,
+          echoCancellation: { ideal: true },
+          noiseSuppression: { ideal: true },
+          autoGainControl: { ideal: true },
+          // @ts-ignore
+          googEchoCancellation: true,
+          // @ts-ignore
+          googAutoGainControl: true,
+          // @ts-ignore
+          googNoiseSuppression: true,
+          // @ts-ignore
+          googHighpassFilter: true,
+          // @ts-ignore
+          googTypingNoiseDetection: true,
           channelCount: 1,
+          sampleRate: 48000,
         },
         video: false,
       });
 
-      rawLocalStreamRef.current = rawStream;
+      localStreamRef.current = rawStream;
+      setLocalStream(rawStream);
 
-      // Iniciar o processador de voz e cancelamento de ruído DSP Krisp
-      const processor = createKrispNoiseProcessor(rawStream, (speaking) => {
-        setIsSpeaking(speaking);
-        socket?.emit('speaking-state', { isSpeaking: speaking });
-      });
-
-      noiseProcessorRef.current = processor;
-      processedStreamRef.current = processor.processedStream;
-      setLocalStream(processor.processedStream);
+      startVAD(rawStream);
 
       socket?.emit('join-voice', { channelId, serverId, avatarUrl });
 
@@ -188,15 +243,12 @@ export const useWebRTC = (
 
   // Sair de Canal de Voz
   const leaveVoiceChannel = useCallback(() => {
-    if (noiseProcessorRef.current) {
-      noiseProcessorRef.current.cleanup();
-      noiseProcessorRef.current = null;
+    stopVAD();
+
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
     }
-    if (rawLocalStreamRef.current) {
-      rawLocalStreamRef.current.getTracks().forEach((t) => t.stop());
-      rawLocalStreamRef.current = null;
-    }
-    processedStreamRef.current = null;
     setLocalStream(null);
 
     if (screenStreamRef.current) {
@@ -224,24 +276,13 @@ export const useWebRTC = (
     setIsDeafened(false);
   }, [socket]);
 
-  // Alternar Mudo (Corta o áudio no processador Krisp e sincroniza com o servidor)
+  // Alternar Mudo
   const toggleMute = useCallback(() => {
     const newMute = !isMuted;
     setIsMuted(newMute);
 
-    // Muta na raiz do DSP
-    if (noiseProcessorRef.current) {
-      noiseProcessorRef.current.setMuted(newMute);
-    }
-
-    // Desativa tracks
-    if (rawLocalStreamRef.current) {
-      rawLocalStreamRef.current.getAudioTracks().forEach((track) => {
-        track.enabled = !newMute;
-      });
-    }
-    if (processedStreamRef.current) {
-      processedStreamRef.current.getAudioTracks().forEach((track) => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach((track) => {
         track.enabled = !newMute;
       });
     }
@@ -275,11 +316,11 @@ export const useWebRTC = (
     if (!connectedChannelId) return;
 
     if (isCameraOn) {
-      if (rawLocalStreamRef.current) {
-        const videoTrack = rawLocalStreamRef.current.getVideoTracks()[0];
+      if (localStreamRef.current) {
+        const videoTrack = localStreamRef.current.getVideoTracks()[0];
         if (videoTrack) {
           videoTrack.stop();
-          rawLocalStreamRef.current.removeTrack(videoTrack);
+          localStreamRef.current.removeTrack(videoTrack);
         }
       }
 
@@ -310,12 +351,12 @@ export const useWebRTC = (
         });
         const camTrack = camStream.getVideoTracks()[0];
 
-        if (rawLocalStreamRef.current) {
-          rawLocalStreamRef.current.addTrack(camTrack);
+        if (localStreamRef.current) {
+          localStreamRef.current.addTrack(camTrack);
         }
 
         peersRef.current.forEach(async (peer, targetSocketId) => {
-          peer.connection.addTrack(camTrack, rawLocalStreamRef.current!);
+          peer.connection.addTrack(camTrack, localStreamRef.current!);
           try {
             const offer = await peer.connection.createOffer();
             await peer.connection.setLocalDescription(offer);

@@ -119,6 +119,20 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
 
   return (
     <div className="flex-1 bg-[#111214] flex flex-col justify-between overflow-hidden relative select-none">
+      {/* Gerenciador Único e Invisível de Áudio dos Peers (Garante 1 único canal por peer sem eco nem duplicação) */}
+      {peerList.map((peer) => {
+        const isLocallyMuted = !!locallyMutedPeers[peer.socketId];
+        const userVol = peerVolumes[peer.socketId] ?? 100;
+        const finalVolume = isLocallyMuted ? 0 : userVol / 100;
+        return (
+          <PeerAudioPlayer
+            key={peer.socketId}
+            stream={peer.stream}
+            volume={finalVolume}
+          />
+        );
+      })}
+
       {/* 1. Header do Canal de Voz */}
       <div className="h-12 border-b border-[#1f2023] px-4 flex items-center justify-between bg-[#1e1f22] shrink-0 z-10">
         <div className="flex items-center space-x-2">
@@ -201,14 +215,7 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
               ref={stageContainerRef}
               className="w-full h-[65vh] bg-black rounded-xl overflow-hidden shadow-2xl relative border border-[#2b2d31] flex items-center justify-center group"
             >
-              <RemoteVideoView
-                stream={currentlyWatchedPeer.stream!}
-                volume={
-                  locallyMutedPeers[currentlyWatchedPeer.socketId]
-                    ? 0
-                    : (peerVolumes[currentlyWatchedPeer.socketId] ?? 100) / 100
-                }
-              />
+              <RemoteVideoView stream={currentlyWatchedPeer.stream!} />
 
               <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white flex items-center space-x-2 border border-white/10">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#f23f43] animate-pulse" />
@@ -424,37 +431,43 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
   );
 };
 
-// Renderizador do Vídeo Remoto no Palco com áudio separado
-const RemoteVideoView: React.FC<{ stream: MediaStream; volume: number }> = ({
+// Player de Áudio Único por Participante (Invisível, previne duplicações de som)
+const PeerAudioPlayer: React.FC<{ stream?: MediaStream; volume: number }> = ({
   stream,
   volume,
 }) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
-    if (audioRef.current) {
+    if (audioRef.current && stream) {
       audioRef.current.srcObject = stream;
       audioRef.current.volume = Math.min(1, Math.max(0, volume));
       audioRef.current.play().catch(() => {});
     }
+  }, [stream, volume]);
+
+  return <audio ref={audioRef} autoPlay playsInline />;
+};
+
+// Renderizador do Vídeo Remoto no Palco
+const RemoteVideoView: React.FC<{ stream: MediaStream }> = ({ stream }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
       videoRef.current.play().catch(() => {});
     }
-  }, [stream, volume]);
+  }, [stream]);
 
   return (
-    <>
-      <audio ref={audioRef} autoPlay playsInline />
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        className="w-full h-full object-contain"
-      />
-    </>
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      className="w-full h-full object-contain"
+    />
   );
 };
 
@@ -467,7 +480,7 @@ const ParticipantStrip: React.FC<{
   peerVolumes: Record<string, number>;
   locallyMutedPeers: Record<string, boolean>;
   onContextMenu: (e: React.MouseEvent, peer: PeerConnectionInfo) => void;
-}> = ({ currentUser, isSpeaking, isMuted, peerList, peerVolumes, locallyMutedPeers, onContextMenu }) => {
+}> = ({ currentUser, isSpeaking, isMuted, peerList, locallyMutedPeers, onContextMenu }) => {
   return (
     <div className="flex items-center justify-center space-x-3 overflow-x-auto w-full py-1">
       <div
@@ -522,7 +535,7 @@ const ParticipantStrip: React.FC<{
   );
 };
 
-// Card de Participante Remoto no Grid (com ícone vermelho de mudo em tempo real)
+// Card de Participante Remoto no Grid
 const RemotePeerCard: React.FC<{
   peer: PeerConnectionInfo;
   isStreaming?: boolean;
@@ -530,21 +543,6 @@ const RemotePeerCard: React.FC<{
   onWatchStream: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
 }> = ({ peer, isStreaming, volume, onWatchStream, onContextMenu }) => {
-  const audioRef = useRef<HTMLAudioElement>(null);
-
-  const hasVideo =
-    peer.stream &&
-    peer.stream.getVideoTracks().length > 0 &&
-    peer.stream.getVideoTracks().some((t) => t.enabled);
-
-  useEffect(() => {
-    if (audioRef.current && peer.stream) {
-      audioRef.current.srcObject = peer.stream;
-      audioRef.current.volume = Math.min(1, Math.max(0, volume));
-      audioRef.current.play().catch(() => {});
-    }
-  }, [peer.stream, volume]);
-
   return (
     <div
       onContextMenu={onContextMenu}
@@ -555,8 +553,6 @@ const RemotePeerCard: React.FC<{
       }`}
       title="Clique com botão direito para ajustar volume deste usuário"
     >
-      <audio ref={audioRef} autoPlay playsInline />
-
       <div className="relative">
         <img
           src={
