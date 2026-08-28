@@ -94,7 +94,18 @@ export const useWebRTC = (
     // Adicionar vídeo da tela se estiver compartilhando
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach((track) => {
-        pc.addTrack(track, screenStreamRef.current!);
+        const sender = pc.addTrack(track, screenStreamRef.current!);
+        try {
+          const params = sender.getParameters();
+          if (!params.encodings || params.encodings.length === 0) {
+            params.encodings = [{}];
+          }
+          params.encodings[0].maxBitrate = 8000000;
+          params.encodings[0].maxFramerate = 60;
+          // @ts-ignore
+          params.degradationPreference = 'maintain-framerate';
+          sender.setParameters(params).catch(() => {});
+        } catch (e) {}
       });
     }
 
@@ -136,7 +147,7 @@ export const useWebRTC = (
     return pc;
   }, [socket, updatePeersState]);
 
-  // Iniciar monitoramento VAD (Visual apenas, sem mexer na track enviada ao WebRTC)
+  // Iniciar monitoramento VAD (Visual apenas)
   const startVAD = (stream: MediaStream) => {
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -200,7 +211,6 @@ export const useWebRTC = (
     try {
       stopVAD();
 
-      // Captura de áudio com cancelamento de eco rigoroso (AEC3), AGC e supressão de ruído nativa
       const rawStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: { ideal: true },
@@ -295,7 +305,7 @@ export const useWebRTC = (
     socket?.emit('update-voice-state', { isMuted: newMute });
   }, [isMuted, socket]);
 
-  // Alternar Deafen (Desativa áudio de todos os outros participantes)
+  // Alternar Deafen
   const toggleDeafen = useCallback(() => {
     const newDeafen = !isDeafened;
     setIsDeafened(newDeafen);
@@ -410,7 +420,7 @@ export const useWebRTC = (
     socket?.emit('update-voice-state', { isScreenSharing: false });
   }, [socket, currentUsername, currentAvatarUrl]);
 
-  // Iniciar Compartilhamento de Tela 1080p 60FPS
+  // Iniciar Compartilhamento de Tela 1080p 60FPS com Prioridade de Framerate Máximo
   const startScreenShare = useCallback(async (quality?: ScreenShareQuality) => {
     if (!connectedChannelId) return;
 
@@ -448,7 +458,20 @@ export const useWebRTC = (
 
       peersRef.current.forEach(async (peer, targetSocketId) => {
         try {
-          peer.connection.addTrack(screenTrack, displayStream);
+          const sender = peer.connection.addTrack(screenTrack, displayStream);
+
+          // Configuração de codificação por hardware da GPU e 60 FPS
+          try {
+            const params = sender.getParameters();
+            if (!params.encodings || params.encodings.length === 0) {
+              params.encodings = [{}];
+            }
+            params.encodings[0].maxBitrate = 8000000;
+            params.encodings[0].maxFramerate = fps;
+            // @ts-ignore
+            params.degradationPreference = 'maintain-framerate';
+            sender.setParameters(params).catch(() => {});
+          } catch (e) {}
 
           const offer = await peer.connection.createOffer();
           await peer.connection.setLocalDescription(offer);

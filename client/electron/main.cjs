@@ -1,6 +1,16 @@
 const { app, BrowserWindow, ipcMain, desktopCapturer, session, nativeImage } = require('electron');
 const path = require('path');
 
+// --- ATIVAÇÃO MÁXIMA DE ACELERAÇÃO POR HARDWARE DA GPU (60 FPS NATIVO) ---
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('enable-accelerated-video-decode');
+app.commandLine.appendSwitch('enable-accelerated-video-encode');
+app.commandLine.appendSwitch('enable-accelerated-2d-canvas');
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('enable-native-gpu-memory-buffers');
+app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,VaapiVideoEncoder,CanvasOopRasterization,DirectCompositionVideoOverlays');
+
 // Identificador único do aplicativo no Windows para ícone correto na barra de tarefas
 app.setAppUserModelId('com.melodia.app');
 
