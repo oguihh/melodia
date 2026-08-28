@@ -424,7 +424,7 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
   );
 };
 
-// Renderizador do Vídeo Remoto no Palco
+// Renderizador do Vídeo Remoto no Palco com audio separado e video mutado
 const RemoteVideoView: React.FC<{ stream: MediaStream; volume: number }> = ({
   stream,
   volume,
@@ -451,6 +451,7 @@ const RemoteVideoView: React.FC<{ stream: MediaStream; volume: number }> = ({
         ref={videoRef}
         autoPlay
         playsInline
+        muted
         className="w-full h-full object-contain"
       />
     </>
@@ -520,7 +521,7 @@ const ParticipantStrip: React.FC<{
   );
 };
 
-// Card de Participante Remoto no Grid (com controle de volume por botão direito)
+// Card de Participante Remoto no Grid
 const RemotePeerCard: React.FC<{
   peer: PeerConnectionInfo;
   isStreaming?: boolean;
@@ -528,13 +529,23 @@ const RemotePeerCard: React.FC<{
   onWatchStream: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
 }> = ({ peer, isStreaming, volume, onWatchStream, onContextMenu }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+
+  const hasVideo =
+    peer.stream &&
+    peer.stream.getVideoTracks().length > 0 &&
+    peer.stream.getVideoTracks().some((t) => t.enabled);
 
   useEffect(() => {
     if (audioRef.current && peer.stream) {
       audioRef.current.srcObject = peer.stream;
       audioRef.current.volume = Math.min(1, Math.max(0, volume));
       audioRef.current.play().catch(() => {});
+    }
+    if (videoRef.current && peer.stream) {
+      videoRef.current.srcObject = peer.stream;
+      videoRef.current.play().catch(() => {});
     }
   }, [peer.stream, volume]);
 
@@ -550,26 +561,36 @@ const RemotePeerCard: React.FC<{
     >
       <audio ref={audioRef} autoPlay playsInline />
 
-      <div className="relative">
-        <img
-          src={
-            peer.avatarUrl ||
-            `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
-              peer.username
-            )}`
-          }
-          alt={peer.username}
-          className={`w-24 h-24 rounded-full bg-[#1e1f22] object-cover transition-transform ${
-            peer.isSpeaking ? 'scale-105 ring-4 ring-[#23a55a]' : ''
-          }`}
+      {hasVideo ? (
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className="absolute inset-0 w-full h-full object-cover rounded-2xl"
         />
+      ) : (
+        <div className="relative">
+          <img
+            src={
+              peer.avatarUrl ||
+              `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
+                peer.username
+              )}`
+            }
+            alt={peer.username}
+            className={`w-24 h-24 rounded-full bg-[#1e1f22] object-cover transition-transform ${
+              peer.isSpeaking ? 'scale-105 ring-4 ring-[#23a55a]' : ''
+            }`}
+          />
+        </div>
+      )}
 
-        {isStreaming && (
-          <span className="absolute -top-2 -right-2 bg-[#f23f43] text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow animate-pulse">
-            AO VIVO
-          </span>
-        )}
-      </div>
+      {isStreaming && (
+        <span className="absolute -top-2 -right-2 bg-[#f23f43] text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow animate-pulse">
+          AO VIVO
+        </span>
+      )}
 
       {/* Botão de Assistir Transmissão */}
       {isStreaming && (
@@ -578,14 +599,14 @@ const RemotePeerCard: React.FC<{
             e.stopPropagation();
             onWatchStream();
           }}
-          className="mt-3 bg-[#23a55a] hover:bg-[#209451] text-white text-xs font-bold px-3.5 py-1.5 rounded-md flex items-center space-x-1.5 shadow-md hover:scale-105 transition duration-150"
+          className="mt-3 bg-[#23a55a] hover:bg-[#209451] text-white text-xs font-bold px-3.5 py-1.5 rounded-md flex items-center space-x-1.5 shadow-md hover:scale-105 transition duration-150 z-10"
         >
           <Tv className="w-3.5 h-3.5" />
           <span>Assistir Transmissão</span>
         </button>
       )}
 
-      <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white">
+      <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white z-10">
         <span className="font-semibold truncate">{peer.username}</span>
         {volume === 0 && <VolumeX className="w-3.5 h-3.5 text-[#f23f43]" />}
       </div>

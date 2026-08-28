@@ -68,7 +68,7 @@ export const useWebRTC = (
 
       source.connect(highPassFilter);
       highPassFilter.connect(analyser);
-      // NÃO conectamos ao audioCtx.destination para nunca dar retorno do próprio microfone
+      // NUNCA conectamos ao audioCtx.destination para evitar microfonia e retorno
       analyserRef.current = analyser;
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
@@ -85,7 +85,7 @@ export const useWebRTC = (
         }
         const average = sum / dataArray.length;
 
-        // Gate de ruído: só considera fala acima de 14 para cortar respiração e ruído de fundo
+        // Gate de ruído: só considera fala ativa acima de 14
         const speakingNow = average > 14 && !isMuted;
 
         if (speakingNow) {
@@ -122,7 +122,6 @@ export const useWebRTC = (
   ): RTCPeerConnection => {
     if (peersRef.current.has(targetSocketId)) {
       const existing = peersRef.current.get(targetSocketId);
-      // Se já existe e a conexão está aberta, atualiza nome/avatar e retorna
       if (existing && existing.connection.signalingState !== 'closed') {
         if (targetUsername && targetUsername !== existing.username) {
           existing.username = targetUsername;
@@ -169,7 +168,6 @@ export const useWebRTC = (
 
     const remoteStream = new MediaStream();
     pc.ontrack = (event) => {
-      // Adicionar a track remota ao remoteStream do peer
       remoteStream.addTrack(event.track);
 
       if (e2eeKeyRef.current && event.receiver) {
@@ -412,7 +410,7 @@ export const useWebRTC = (
     socket?.emit('update-voice-state', { isScreenSharing: false });
   }, [socket, currentUsername, currentAvatarUrl]);
 
-  // Iniciar Compartilhamento de Tela (60 FPS / 1080P) COM RENEGOCIAÇÃO WEBRTC INSTANTÂNEA
+  // Iniciar Compartilhamento de Tela (60 FPS / 1080P) com Otimização de Bitrate
   const startScreenShare = useCallback(async (quality?: ScreenShareQuality) => {
     if (!connectedChannelId) return;
 
@@ -435,7 +433,7 @@ export const useWebRTC = (
     try {
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
         video: videoConstraints,
-        audio: quality?.audio !== false,
+        audio: false, // Desativa áudio da tela por padrão para evitar eco de loopback
       });
 
       screenStreamRef.current = displayStream;
@@ -448,13 +446,25 @@ export const useWebRTC = (
         stopScreenShare();
       };
 
-      // Adicionar track de tela e disparar renegociação imediata para todos os peers conectados!
+      // Adicionar track de tela e configurar bitrate alto para 60 FPS fluído
       peersRef.current.forEach(async (peer, targetSocketId) => {
         try {
           const sender = peer.connection.addTrack(screenTrack, displayStream);
           if (e2eeKeyRef.current && sender) {
             setupSenderTransform(sender, e2eeKeyRef.current);
           }
+
+          // Priorizar fluidez de 60 quadros por segundo
+          try {
+            const params = sender.getParameters();
+            if (!params.encodings || params.encodings.length === 0) {
+              params.encodings = [{}];
+            }
+            params.encodings[0].maxBitrate = 8000000; // 8 Mbps
+            params.encodings[0].maxFramerate = fps;
+            (params as any).degradationPreference = 'maintain-framerate';
+            await sender.setParameters(params);
+          } catch (e) {}
 
           const offer = await peer.connection.createOffer();
           await peer.connection.setLocalDescription(offer);
