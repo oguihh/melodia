@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { LogIn, UserPlus, Lock, Mail, User as UserIcon } from 'lucide-react';
 import { apiRequest, setStoredToken } from '../lib/api';
 import { User as UserType } from '../types';
+import melodiaLogo from '../assets/logo.png';
 
 interface AuthModalProps {
   onSuccess: (user: UserType, token: string) => void;
@@ -55,7 +56,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
         {/* Header MELODIA com Logo Oficial */}
         <div className="bg-gradient-to-r from-[#5865f2] to-[#4752c4] p-6 text-center text-white relative">
           <img
-            src="/logo.png"
+            src={melodiaLogo}
             alt="MELODIA Logo"
             className="w-16 h-16 rounded-2xl mx-auto mb-2 object-cover shadow-2xl ring-2 ring-white/20"
           />

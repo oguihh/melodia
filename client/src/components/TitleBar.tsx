@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Minus, Square, X, Copy, Radio } from 'lucide-react';
 
 interface TitleBarProps {
@@ -46,23 +46,13 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   return (
     <header
       onDoubleClick={isElectron ? handleMaximize : undefined}
-      className="h-8 bg-[#1e1f22] text-[#949ba4] flex items-center justify-between px-2 select-none border-b border-[#111214] z-50 shrink-0 text-xs font-semibold app-drag-region"
+      className="h-8 bg-[#1e1f22] text-[#949ba4] flex items-center justify-between px-3 select-none border-b border-[#111214] z-50 shrink-0 text-xs font-semibold app-drag-region"
     >
-      {/* Esquerda: Logo Oficial da MELODIA e Status de Voz */}
+      {/* Esquerda: Apenas o nome "MELODIA" em roxo vibrante, sem ícone */}
       <div className="flex items-center space-x-2 no-drag">
-        <div className="flex items-center space-x-2 font-bold text-white tracking-wide">
-          <img
-            src="/logo.png"
-            alt="MELODIA Logo"
-            className="w-5 h-5 rounded-full object-cover shadow"
-            onError={(e) => {
-              (e.target as HTMLElement).style.display = 'none';
-            }}
-          />
-          <span className="bg-gradient-to-r from-[#5865f2] to-[#00a8fc] bg-clip-text text-transparent font-black tracking-wider">
-            MELODIA
-          </span>
-        </div>
+        <span className="text-[#8b5cf6] font-black text-sm tracking-wider hover:text-[#a78bfa] transition select-none">
+          MELODIA
+        </span>
 
         {isVoiceConnected && (
           <div className="flex items-center space-x-1.5 bg-[#23a55a]/15 text-[#23a55a] px-2 py-0.5 rounded-full text-[10px] font-bold border border-[#23a55a]/30 ml-2">

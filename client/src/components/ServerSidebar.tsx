@@ -1,6 +1,7 @@
 import React from 'react';
 import { Plus } from 'lucide-react';
 import { Server } from '../types';
+import melodiaLogo from '../assets/logo.png';
 
 interface ServerSidebarProps {
   servers: Server[];
@@ -36,7 +37,7 @@ export const ServerSidebar: React.FC<ServerSidebarProps> = ({
           title="Mensagens Diretas e Amigos"
         >
           <img
-            src="/logo.png"
+            src={melodiaLogo}
             alt="MELODIA"
             className="w-full h-full object-cover"
           />
