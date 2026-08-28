@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
 import { PeerConnectionInfo, VoiceParticipant, ScreenShareQuality } from '../types';
+import { sounds } from '../lib/sounds';
 
 const RTC_CONFIG: RTCConfiguration = {
   iceServers: [
@@ -286,10 +287,17 @@ export const useWebRTC = (
     setIsDeafened(false);
   }, [socket]);
 
-  // Alternar Mudo
+  // Alternar Mudo com Efeito Sonoro
   const toggleMute = useCallback(() => {
     const newMute = !isMuted;
     setIsMuted(newMute);
+
+    // Efeito sonoro característico de mutar/desmutar
+    if (newMute) {
+      sounds.playMuteSound();
+    } else {
+      sounds.playUnmuteSound();
+    }
 
     if (localStreamRef.current) {
       localStreamRef.current.getAudioTracks().forEach((track) => {
@@ -305,10 +313,16 @@ export const useWebRTC = (
     socket?.emit('update-voice-state', { isMuted: newMute });
   }, [isMuted, socket]);
 
-  // Alternar Deafen
+  // Alternar Deafen com Efeito Sonoro
   const toggleDeafen = useCallback(() => {
     const newDeafen = !isDeafened;
     setIsDeafened(newDeafen);
+
+    if (newDeafen) {
+      sounds.playMuteSound();
+    } else {
+      sounds.playUnmuteSound();
+    }
 
     peersRef.current.forEach((peer) => {
       if (peer.stream) {
@@ -387,8 +401,10 @@ export const useWebRTC = (
     }
   }, [connectedChannelId, isCameraOn, socket, currentUsername, currentAvatarUrl]);
 
-  // Parar Compartilhamento de Tela com renegociação
+  // Parar Compartilhamento de Tela com Efeito Sonoro
   const stopScreenShare = useCallback(() => {
+    sounds.playStopScreenShareSound();
+
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach((t) => t.stop());
       screenStreamRef.current = null;
@@ -420,7 +436,7 @@ export const useWebRTC = (
     socket?.emit('update-voice-state', { isScreenSharing: false });
   }, [socket, currentUsername, currentAvatarUrl]);
 
-  // Iniciar Compartilhamento de Tela 1080p 60FPS com Prioridade de Framerate Máximo
+  // Iniciar Compartilhamento de Tela 1080p 60FPS com Efeito Sonoro
   const startScreenShare = useCallback(async (quality?: ScreenShareQuality) => {
     if (!connectedChannelId) return;
 
@@ -446,6 +462,8 @@ export const useWebRTC = (
         audio: false,
       });
 
+      sounds.playStartScreenShareSound();
+
       screenStreamRef.current = displayStream;
       setScreenStream(displayStream);
       setIsScreenSharing(true);
@@ -460,7 +478,6 @@ export const useWebRTC = (
         try {
           const sender = peer.connection.addTrack(screenTrack, displayStream);
 
-          // Configuração de codificação por hardware da GPU e 60 FPS
           try {
             const params = sender.getParameters();
             if (!params.encodings || params.encodings.length === 0) {

@@ -1,6 +1,7 @@
 /**
- * Sistema de Sons e Notificações do MELODIA
- * Utiliza Web Audio API para reproduzir efeitos sonoros nítidos sem dependência de arquivos externos.
+ * Sistema de Sons e Efeitos Sonoros do MELODIA (Estilo Discord)
+ * Utiliza Web Audio API para reproduzir efeitos sonoros nítidos em tempo real
+ * sem dependência de arquivos externos pesados.
  */
 
 class SoundSystem {
@@ -21,7 +22,7 @@ class SoundSystem {
     }
   }
 
-  // Som de nova mensagem (Chime suave estilo Discord)
+  // 1. Som de nova mensagem recebida (Chime suave)
   playMessageNotification() {
     const ctx = this.getContext();
     if (!ctx) return;
@@ -46,7 +47,7 @@ class SoundSystem {
     } catch (e) {}
   }
 
-  // Som de pedido de amizade recebido (Melodia de boas-vindas)
+  // 2. Som de pedido de amizade recebido
   playFriendRequestSound() {
     const ctx = this.getContext();
     if (!ctx) return;
@@ -61,7 +62,7 @@ class SoundSystem {
         osc.type = 'triangle';
         osc.frequency.setValueAtTime(freq, now);
 
-        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.setValueAtTime(0.12, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
 
         osc.connect(gain);
@@ -73,7 +74,7 @@ class SoundSystem {
     } catch (e) {}
   }
 
-  // Som ao entrar na call (Voz conectada)
+  // 3. Som ao entrar na call (Voz conectada)
   playJoinCallSound() {
     const ctx = this.getContext();
     if (!ctx) return;
@@ -84,8 +85,8 @@ class SoundSystem {
       const gain = ctx.createGain();
 
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(440, now);
-      osc.frequency.exponentialRampToValueAtTime(880, now + 0.12);
+      osc.frequency.setValueAtTime(440, now); // A4
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.12); // A5
 
       gain.gain.setValueAtTime(0.12, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
@@ -98,7 +99,7 @@ class SoundSystem {
     } catch (e) {}
   }
 
-  // Som ao sair da call (Desconectado)
+  // 4. Som ao sair da call (Desconectado)
   playLeaveCallSound() {
     const ctx = this.getContext();
     if (!ctx) return;
@@ -123,7 +124,111 @@ class SoundSystem {
     } catch (e) {}
   }
 
-  // Notificação nativa do sistema / navegador
+  // 5. Som ao MUTAR o microfone (Grave / Fechamento)
+  playMuteSound() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(400, now);
+      osc.frequency.exponentialRampToValueAtTime(220, now + 0.1);
+
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.12);
+    } catch (e) {}
+  }
+
+  // 6. Som ao DESMUTAR o microfone (Agudo / Abertura)
+  playUnmuteSound() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(300, now);
+      osc.frequency.exponentialRampToValueAtTime(600, now + 0.1);
+
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.12);
+    } catch (e) {}
+  }
+
+  // 7. Som ao INICIAR compartilhamento de tela (Live Start)
+  playStartScreenShareSound() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    try {
+      const notes = [440, 554.37, 659.25, 880]; // A4, C#5, E5, A5
+      notes.forEach((freq, idx) => {
+        const now = ctx.currentTime + idx * 0.05;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now);
+
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.15);
+      });
+    } catch (e) {}
+  }
+
+  // 8. Som ao PARAR compartilhamento de tela (Live Stop)
+  playStopScreenShareSound() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    try {
+      const notes = [880, 659.25, 440]; // A5, E5, A4
+      notes.forEach((freq, idx) => {
+        const now = ctx.currentTime + idx * 0.05;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now);
+
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.15);
+      });
+    } catch (e) {}
+  }
+
+  // Notificação nativa do sistema
   showNotification(title: string, body: string, icon?: string) {
     if (typeof window === 'undefined' || !('Notification' in window)) return;
 
