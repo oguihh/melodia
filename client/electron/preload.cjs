@@ -5,6 +5,9 @@ const api = {
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
   getScreenSources: () => ipcRenderer.invoke('get-screen-sources'),
+  getHardwareAcceleration: () => ipcRenderer.invoke('get-hardware-acceleration'),
+  setHardwareAcceleration: (enabled) => ipcRenderer.invoke('set-hardware-acceleration', enabled),
+  relaunchApp: () => ipcRenderer.send('relaunch-app'),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

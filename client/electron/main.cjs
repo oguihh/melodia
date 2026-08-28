@@ -1,15 +1,35 @@
 const { app, BrowserWindow, ipcMain, desktopCapturer, session, nativeImage } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
-// --- ATIVAÇÃO MÁXIMA DE ACELERAÇÃO POR HARDWARE DA GPU (60 FPS NATIVO) ---
-app.commandLine.appendSwitch('enable-gpu-rasterization');
-app.commandLine.appendSwitch('enable-zero-copy');
-app.commandLine.appendSwitch('enable-accelerated-video-decode');
-app.commandLine.appendSwitch('enable-accelerated-video-encode');
-app.commandLine.appendSwitch('enable-accelerated-2d-canvas');
-app.commandLine.appendSwitch('ignore-gpu-blocklist');
-app.commandLine.appendSwitch('enable-native-gpu-memory-buffers');
-app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,VaapiVideoEncoder,CanvasOopRasterization,DirectCompositionVideoOverlays');
+// Carregar preferências salvas de hardware acceleration
+const configPath = path.join(app.getPath('userData'), 'settings.json');
+let isHardwareAccelerationEnabled = true;
+
+try {
+  if (fs.existsSync(configPath)) {
+    const rawData = fs.readFileSync(configPath, 'utf8');
+    const settings = JSON.parse(rawData);
+    if (settings.hardwareAcceleration === false) {
+      isHardwareAccelerationEnabled = false;
+    }
+  }
+} catch (e) {}
+
+if (isHardwareAccelerationEnabled) {
+  // Ativação máxima de aceleração por GPU
+  app.commandLine.appendSwitch('enable-gpu-rasterization');
+  app.commandLine.appendSwitch('enable-zero-copy');
+  app.commandLine.appendSwitch('enable-accelerated-video-decode');
+  app.commandLine.appendSwitch('enable-accelerated-video-encode');
+  app.commandLine.appendSwitch('enable-accelerated-2d-canvas');
+  app.commandLine.appendSwitch('ignore-gpu-blocklist');
+  app.commandLine.appendSwitch('enable-native-gpu-memory-buffers');
+  app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,VaapiVideoEncoder,CanvasOopRasterization,DirectCompositionVideoOverlays');
+} else {
+  // Desativação total se o usuário optar por rodar em modo puramente de software
+  app.disableHardwareAcceleration();
+}
 
 // Identificador único do aplicativo no Windows para ícone correto na barra de tarefas
 app.setAppUserModelId('com.melodia.app');
@@ -99,6 +119,31 @@ ipcMain.on('window-maximize', () => {
 
 ipcMain.on('window-close', () => {
   if (mainWindow) mainWindow.close();
+});
+
+// IPC handlers para Aceleração de Hardware
+ipcMain.handle('get-hardware-acceleration', () => {
+  return isHardwareAccelerationEnabled;
+});
+
+ipcMain.handle('set-hardware-acceleration', (event, enabled) => {
+  try {
+    let settings = {};
+    if (fs.existsSync(configPath)) {
+      settings = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    }
+    settings.hardwareAcceleration = enabled;
+    fs.writeFileSync(configPath, JSON.stringify(settings, null, 2));
+    return true;
+  } catch (e) {
+    console.error('Erro ao salvar configuração de hardware:', e);
+    return false;
+  }
+});
+
+ipcMain.on('relaunch-app', () => {
+  app.relaunch();
+  app.exit(0);
 });
 
 // IPC handler para listagem de janelas e telas

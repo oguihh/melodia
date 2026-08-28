@@ -11,6 +11,8 @@ import {
   Play,
   Square,
   ShieldCheck,
+  Cpu,
+  RefreshCw,
 } from 'lucide-react';
 import { User as UserType } from '../types';
 import { apiRequest } from '../lib/api';
@@ -43,6 +45,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [isPlayingBack, setIsPlayingBack] = useState(false);
   const [playbackCountdown, setPlaybackCountdown] = useState(0);
 
+  // Estado de Aceleração por Hardware (GPU)
+  const [hardwareAccel, setHardwareAccel] = useState<boolean>(true);
+  const [initialHardwareAccel, setInitialHardwareAccel] = useState<boolean>(true);
+  const [needsRestart, setNeedsRestart] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const testStreamRef = useRef<MediaStream | null>(null);
   const testProcessorRef = useRef<NoiseProcessor | null>(null);
@@ -52,12 +59,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const animFrameRef = useRef<number | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
 
+  // Carregar status da aceleração de hardware do Electron
+  useEffect(() => {
+    const checkHW = async () => {
+      const electronAPI = (window as any).electronAPI || (window as any).electron;
+      if (electronAPI?.getHardwareAcceleration) {
+        try {
+          const isEnabled = await electronAPI.getHardwareAcceleration();
+          setHardwareAccel(isEnabled);
+          setInitialHardwareAccel(isEnabled);
+        } catch (e) {}
+      }
+    };
+    checkHW();
+  }, []);
+
   // Limpeza ao fechar modal
   useEffect(() => {
     return () => {
       stopMicTest();
     };
   }, []);
+
+  const handleToggleHardwareAccel = async () => {
+    const nextVal = !hardwareAccel;
+    setHardwareAccel(nextVal);
+    setNeedsRestart(nextVal !== initialHardwareAccel);
+
+    const electronAPI = (window as any).electronAPI || (window as any).electron;
+    if (electronAPI?.setHardwareAcceleration) {
+      await electronAPI.setHardwareAcceleration(nextVal);
+    }
+  };
+
+  const handleRelaunch = () => {
+    const electronAPI = (window as any).electronAPI || (window as any).electron;
+    if (electronAPI?.relaunchApp) {
+      electronAPI.relaunchApp();
+    } else {
+      window.location.reload();
+    }
+  };
 
   const stopMicTest = () => {
     if (animFrameRef.current) {
@@ -119,7 +161,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           sum += dataArray[i];
         }
         const avg = sum / dataArray.length;
-        // Escalar para porcentagem (0% a 100%)
         const percentage = Math.min(100, Math.round((avg / 128) * 100));
         setMicVolumeLevel(percentage);
 
@@ -347,7 +388,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          {/* Seção: Teste de Microfone e Supressão de Ruído Krisp */}
+          {/* Seção 1: Teste de Microfone e Supressão de Ruído Krisp */}
           <div className="bg-[#1e1f22] p-4 rounded-xl border border-[#2b2d31] space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2 text-white font-bold text-sm">
@@ -437,6 +478,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 )}
               </button>
             </div>
+          </div>
+
+          {/* Seção 2: Aceleração por Hardware da GPU (Avançado) */}
+          <div className="bg-[#1e1f22] p-4 rounded-xl border border-[#2b2d31] space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2 text-white font-bold text-sm">
+                <Cpu className="w-4 h-4 text-[#5865f2]" />
+                <span>Aceleração por Hardware da GPU</span>
+              </div>
+
+              {/* Toggle Switch */}
+              <button
+                type="button"
+                onClick={handleToggleHardwareAccel}
+                className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors duration-200 ease-in-out ${
+                  hardwareAccel ? 'bg-[#23a55a]' : 'bg-[#4e5058]'
+                }`}
+              >
+                <div
+                  className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${
+                    hardwareAccel ? 'translate-x-6' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            <p className="text-xs text-[#949ba4]">
+              Utiliza a sua placa de vídeo (GPU) para renderizar a interface e decodificar transmissões de tela em 60 FPS com baixíssimo uso de processador. Desative apenas se tiver problemas de incompatibilidade com jogos antigos.
+            </p>
+
+            {needsRestart && (
+              <div className="flex items-center justify-between bg-[#5865f2]/15 border border-[#5865f2]/40 p-3 rounded-lg animate-fadeIn">
+                <span className="text-xs text-[#dbdee1]">
+                  É necessário reiniciar o aplicativo para aplicar a alteração da GPU.
+                </span>
+                <button
+                  type="button"
+                  onClick={handleRelaunch}
+                  className="px-3 py-1 bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-bold rounded-md flex items-center space-x-1 transition shadow"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Reiniciar Agora</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Nome de Usuário */}
