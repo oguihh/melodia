@@ -1,7 +1,20 @@
-import React, { useState, useRef } from 'react';
-import { X, LogOut, Upload, Sparkles, Check, RotateCcw, User } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  X,
+  LogOut,
+  Upload,
+  Sparkles,
+  Check,
+  RotateCcw,
+  Mic,
+  Volume2,
+  Play,
+  Square,
+  ShieldCheck,
+} from 'lucide-react';
 import { User as UserType } from '../types';
 import { apiRequest } from '../lib/api';
+import { createKrispNoiseProcessor, NoiseProcessor } from '../lib/noiseSuppression';
 
 interface SettingsModalProps {
   currentUser: UserType;
@@ -23,7 +36,167 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Estados do Teste de Microfone
+  const [isTestingMic, setIsTestingMic] = useState(false);
+  const [micVolumeLevel, setMicVolumeLevel] = useState(0);
+  const [isRecordingPlayback, setIsRecordingPlayback] = useState(false);
+  const [isPlayingBack, setIsPlayingBack] = useState(false);
+  const [playbackCountdown, setPlaybackCountdown] = useState(0);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const testStreamRef = useRef<MediaStream | null>(null);
+  const testProcessorRef = useRef<NoiseProcessor | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+
+  // Limpeza ao fechar modal
+  useEffect(() => {
+    return () => {
+      stopMicTest();
+    };
+  }, []);
+
+  const stopMicTest = () => {
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
+    if (testProcessorRef.current) {
+      testProcessorRef.current.cleanup();
+      testProcessorRef.current = null;
+    }
+    if (testStreamRef.current) {
+      testStreamRef.current.getTracks().forEach((t) => t.stop());
+      testStreamRef.current = null;
+    }
+    if (playbackAudioRef.current) {
+      playbackAudioRef.current.pause();
+      playbackAudioRef.current = null;
+    }
+    setIsTestingMic(false);
+    setIsRecordingPlayback(false);
+    setIsPlayingBack(false);
+    setMicVolumeLevel(0);
+  };
+
+  // Iniciar Medidor de Volume do Microfone em Tempo Real
+  const startMicTest = async () => {
+    try {
+      stopMicTest();
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 48000,
+        },
+        video: false,
+      });
+
+      testStreamRef.current = stream;
+
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const audioCtx = new AudioCtx({ sampleRate: 48000 });
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.2;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+
+      setIsTestingMic(true);
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const updateMeter = () => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        const avg = sum / dataArray.length;
+        // Escalar para porcentagem (0% a 100%)
+        const percentage = Math.min(100, Math.round((avg / 128) * 100));
+        setMicVolumeLevel(percentage);
+
+        animFrameRef.current = requestAnimationFrame(updateMeter);
+      };
+
+      animFrameRef.current = requestAnimationFrame(updateMeter);
+    } catch (e) {
+      console.error('Erro ao iniciar teste de microfone:', e);
+      alert('Não foi possível acessar seu microfone para o teste.');
+    }
+  };
+
+  // Gravar 4 segundos com filtro Krisp e ouvir de volta
+  const recordAndListenBack = async () => {
+    try {
+      stopMicTest();
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 48000,
+        },
+        video: false,
+      });
+
+      testStreamRef.current = stream;
+      const processor = createKrispNoiseProcessor(stream);
+      testProcessorRef.current = processor;
+
+      recordedChunksRef.current = [];
+      const recorder = new MediaRecorder(processor.processedStream);
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          recordedChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
+        const audioUrl = URL.createObjectURL(blob);
+        const audio = new Audio(audioUrl);
+        playbackAudioRef.current = audio;
+
+        setIsRecordingPlayback(false);
+        setIsPlayingBack(true);
+
+        audio.play().catch(() => {});
+        audio.onended = () => {
+          setIsPlayingBack(false);
+          startMicTest();
+        };
+      };
+
+      recorder.start();
+      setIsRecordingPlayback(true);
+      setPlaybackCountdown(4);
+
+      let timeLeft = 4;
+      const interval = setInterval(() => {
+        timeLeft--;
+        setPlaybackCountdown(timeLeft);
+        if (timeLeft <= 0) {
+          clearInterval(interval);
+          if (recorder.state === 'recording') {
+            recorder.stop();
+          }
+        }
+      }, 1000);
+    } catch (e) {
+      console.error('Erro ao gravar áudio de teste:', e);
+    }
+  };
 
   // Upload de foto do computador (PNG, JPG, WEBP, etc.)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -90,12 +263,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Header */}
         <div className="p-4 bg-[#2b2d31] flex items-center justify-between border-b border-[#1f2023]">
           <h3 className="font-bold text-white text-base">Meu Perfil e Configurações</h3>
-          <button onClick={onClose} className="text-[#949ba4] hover:text-white transition">
+          <button
+            onClick={() => {
+              stopMicTest();
+              onClose();
+            }}
+            className="text-[#949ba4] hover:text-white transition"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSave} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
+        <form onSubmit={handleSave} className="p-6 space-y-6 max-h-[82vh] overflow-y-auto">
           {error && (
             <div className="bg-[#f23f43]/15 border border-[#f23f43]/40 text-[#f23f43] text-xs p-3 rounded-md">
               {error}
@@ -168,6 +347,98 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
+          {/* Seção: Teste de Microfone e Supressão de Ruído Krisp */}
+          <div className="bg-[#1e1f22] p-4 rounded-xl border border-[#2b2d31] space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2 text-white font-bold text-sm">
+                <Mic className="w-4 h-4 text-[#5865f2]" />
+                <span>Teste de Microfone e Qualidade</span>
+              </div>
+              <div className="flex items-center space-x-1 bg-[#23a55a]/15 text-[#23a55a] px-2 py-0.5 rounded-full text-[10px] font-bold border border-[#23a55a]/30">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Krisp DSP Ativo (48kHz)</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-[#949ba4]">
+              Fale no seu microfone para ver a barra responder ou grave um teste com a supressão
+              Krisp para ouvir como sua voz chega para os seus amigos.
+            </p>
+
+            {/* Barra de Volume em Tempo Real */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-[11px] text-[#949ba4]">
+                <span>Sensibilidade de Entrada</span>
+                <span className="font-mono text-white">{micVolumeLevel}%</span>
+              </div>
+              <div className="w-full h-3 bg-[#313338] rounded-full overflow-hidden p-0.5 border border-[#3f4147]">
+                <div
+                  className={`h-full rounded-full transition-all duration-75 ${
+                    micVolumeLevel > 70
+                      ? 'bg-[#f23f43]'
+                      : micVolumeLevel > 30
+                      ? 'bg-[#23a55a]'
+                      : 'bg-[#5865f2]'
+                  }`}
+                  style={{ width: `${micVolumeLevel}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Botões do Teste de Voz */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              {!isTestingMic ? (
+                <button
+                  type="button"
+                  onClick={startMicTest}
+                  className="px-3 py-1.5 bg-[#5865f2] hover:bg-[#4752c4] text-white rounded-md text-xs font-semibold flex items-center space-x-1.5 transition"
+                >
+                  <Volume2 className="w-4 h-4" />
+                  <span>Ver Nível do Microfone</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={stopMicTest}
+                  className="px-3 py-1.5 bg-[#35373c] hover:bg-[#404249] text-white rounded-md text-xs font-semibold flex items-center space-x-1.5 transition"
+                >
+                  <Square className="w-3.5 h-3.5" />
+                  <span>Parar Teste</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={recordAndListenBack}
+                disabled={isRecordingPlayback || isPlayingBack}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center space-x-1.5 transition ${
+                  isRecordingPlayback
+                    ? 'bg-[#f23f43] text-white animate-pulse'
+                    : isPlayingBack
+                    ? 'bg-[#23a55a] text-white'
+                    : 'bg-[#2b2d31] hover:bg-[#35373c] text-[#dbdee1] hover:text-white border border-[#3f4147]'
+                }`}
+              >
+                {isRecordingPlayback ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                    <span>Gravando Teste... ({playbackCountdown}s)</span>
+                  </>
+                ) : isPlayingBack ? (
+                  <>
+                    <Play className="w-3.5 h-3.5" />
+                    <span>Ouvindo seu Retorno Krisp...</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-3.5 h-3.5 text-[#23a55a]" />
+                    <span>Gravar e Ouvir Minha Voz</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
           {/* Nome de Usuário */}
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-[#b5bac1] mb-2">
@@ -211,7 +482,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="flex space-x-2">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={() => {
+                  stopMicTest();
+                  onClose();
+                }}
                 className="text-xs text-white hover:underline py-2 px-4"
               >
                 Cancelar
