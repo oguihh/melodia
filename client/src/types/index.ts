@@ -77,6 +77,10 @@ export interface PeerConnectionInfo {
   stream?: MediaStream;
   screenStream?: MediaStream;
   isSpeaking?: boolean;
+  isMuted?: boolean;
+  isDeafened?: boolean;
+  isCameraOn?: boolean;
+  isScreenSharing?: boolean;
 }
 
 export interface Friend {

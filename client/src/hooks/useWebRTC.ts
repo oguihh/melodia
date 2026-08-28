@@ -47,7 +47,11 @@ export const useWebRTC = (
     targetSocketId: string,
     targetUserId: string,
     targetUsername: string,
-    targetAvatarUrl?: string
+    targetAvatarUrl?: string,
+    targetIsMuted?: boolean,
+    targetIsDeafened?: boolean,
+    targetIsCameraOn?: boolean,
+    targetIsScreenSharing?: boolean
   ): RTCPeerConnection => {
     if (peersRef.current.has(targetSocketId)) {
       const existing = peersRef.current.get(targetSocketId);
@@ -57,6 +61,12 @@ export const useWebRTC = (
         }
         if (targetAvatarUrl) {
           existing.avatarUrl = targetAvatarUrl;
+        }
+        if (targetIsMuted !== undefined) {
+          existing.isMuted = targetIsMuted;
+        }
+        if (targetIsDeafened !== undefined) {
+          existing.isDeafened = targetIsDeafened;
         }
         updatePeersState();
         return existing.connection;
@@ -116,6 +126,10 @@ export const useWebRTC = (
       avatarUrl: targetAvatarUrl,
       connection: pc,
       stream: remoteStream,
+      isMuted: targetIsMuted || false,
+      isDeafened: targetIsDeafened || false,
+      isCameraOn: targetIsCameraOn || false,
+      isScreenSharing: targetIsScreenSharing || false,
     });
 
     updatePeersState();
@@ -210,7 +224,7 @@ export const useWebRTC = (
     setIsDeafened(false);
   }, [socket]);
 
-  // Alternar Mudo (Corta o áudio no processador Krisp e na track local)
+  // Alternar Mudo (Corta o áudio no processador Krisp e sincroniza com o servidor)
   const toggleMute = useCallback(() => {
     const newMute = !isMuted;
     setIsMuted(newMute);
@@ -355,7 +369,7 @@ export const useWebRTC = (
     socket?.emit('update-voice-state', { isScreenSharing: false });
   }, [socket, currentUsername, currentAvatarUrl]);
 
-  // Iniciar Compartilhamento de Tela 1080p 60FPS sem corrupção e com hardware decode nativo
+  // Iniciar Compartilhamento de Tela 1080p 60FPS
   const startScreenShare = useCallback(async (quality?: ScreenShareQuality) => {
     if (!connectedChannelId) return;
 
@@ -378,7 +392,7 @@ export const useWebRTC = (
     try {
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
         video: videoConstraints,
-        audio: false, // Desativado para evitar loopback acústico
+        audio: false,
       });
 
       screenStreamRef.current = displayStream;
@@ -391,7 +405,6 @@ export const useWebRTC = (
         stopScreenShare();
       };
 
-      // Adicionar a track de tela e renegociar limpo diretamente no hardware
       peersRef.current.forEach(async (peer, targetSocketId) => {
         try {
           peer.connection.addTrack(screenTrack, displayStream);
@@ -429,7 +442,11 @@ export const useWebRTC = (
           targetUser.socketId,
           targetUser.userId,
           targetUser.username,
-          targetUser.avatarUrl
+          targetUser.avatarUrl,
+          targetUser.isMuted,
+          targetUser.isDeafened,
+          targetUser.isCameraOn,
+          targetUser.isScreenSharing
         );
 
         try {
@@ -539,12 +556,27 @@ export const useWebRTC = (
       }
     };
 
+    // Sincronização em tempo real do estado de voz de outros membros (Mudo, Deafen, etc.)
+    const handleUserVoiceStateUpdated = (updatedParticipant: VoiceParticipant) => {
+      for (const peer of peersRef.current.values()) {
+        if (peer.userId === updatedParticipant.userId) {
+          peer.isMuted = updatedParticipant.isMuted;
+          peer.isDeafened = updatedParticipant.isDeafened;
+          peer.isCameraOn = updatedParticipant.isCameraOn;
+          peer.isScreenSharing = updatedParticipant.isScreenSharing;
+          updatePeersState();
+          break;
+        }
+      }
+    };
+
     socket.on('voice-room-users', handleVoiceRoomUsers);
     socket.on('signal-offer', handleSignalOffer);
     socket.on('signal-answer', handleSignalAnswer);
     socket.on('signal-ice', handleSignalIce);
     socket.on('user-left-voice', handleUserLeftVoice);
     socket.on('user-speaking-changed', handleUserSpeakingChanged);
+    socket.on('user-voice-state-updated', handleUserVoiceStateUpdated);
 
     return () => {
       socket.off('voice-room-users', handleVoiceRoomUsers);
@@ -553,6 +585,7 @@ export const useWebRTC = (
       socket.off('signal-ice', handleSignalIce);
       socket.off('user-left-voice', handleUserLeftVoice);
       socket.off('user-speaking-changed', handleUserSpeakingChanged);
+      socket.off('user-voice-state-updated', handleUserVoiceStateUpdated);
     };
   }, [socket, currentUserId, currentUsername, currentAvatarUrl, createPeerConnection, updatePeersState]);
 

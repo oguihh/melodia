@@ -283,7 +283,7 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
                     }`}
                   />
                   {isMuted && (
-                    <div className="absolute bottom-0 right-0 p-1.5 rounded-full bg-[#f23f43] text-white shadow">
+                    <div className="absolute bottom-0 right-0 p-1.5 rounded-full bg-[#f23f43] text-white shadow-lg ring-2 ring-[#2b2d31]">
                       <MicOff className="w-4 h-4" />
                     </div>
                   )}
@@ -309,7 +309,7 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
               </div>
             </div>
 
-            {/* Cards Remotos com Suporte a Botão Direito (Ajustar Volume) */}
+            {/* Cards Remotos com Exibição Visual de Mudo em Tempo Real */}
             {peerList.map((peer) => {
               const isPeerStreaming =
                 peer.stream &&
@@ -424,7 +424,7 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
   );
 };
 
-// Renderizador do Vídeo Remoto no Palco com audio separado e video mutado
+// Renderizador do Vídeo Remoto no Palco com áudio separado
 const RemoteVideoView: React.FC<{ stream: MediaStream; volume: number }> = ({
   stream,
   volume,
@@ -513,7 +513,8 @@ const ParticipantStrip: React.FC<{
               className="w-8 h-8 rounded-full bg-[#1e1f22] object-cover"
             />
             <span className="text-xs font-semibold text-white truncate">{peer.username}</span>
-            {isLocallyMuted && <VolumeX className="w-3.5 h-3.5 text-[#f23f43]" />}
+            {peer.isMuted && <MicOff className="w-3.5 h-3.5 text-[#f23f43]" />}
+            {isLocallyMuted && !peer.isMuted && <VolumeX className="w-3.5 h-3.5 text-[#f23f43]" />}
           </div>
         );
       })}
@@ -521,7 +522,7 @@ const ParticipantStrip: React.FC<{
   );
 };
 
-// Card de Participante Remoto no Grid
+// Card de Participante Remoto no Grid (com ícone vermelho de mudo em tempo real)
 const RemotePeerCard: React.FC<{
   peer: PeerConnectionInfo;
   isStreaming?: boolean;
@@ -529,7 +530,6 @@ const RemotePeerCard: React.FC<{
   onWatchStream: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
 }> = ({ peer, isStreaming, volume, onWatchStream, onContextMenu }) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const hasVideo =
@@ -542,10 +542,6 @@ const RemotePeerCard: React.FC<{
       audioRef.current.srcObject = peer.stream;
       audioRef.current.volume = Math.min(1, Math.max(0, volume));
       audioRef.current.play().catch(() => {});
-    }
-    if (videoRef.current && peer.stream) {
-      videoRef.current.srcObject = peer.stream;
-      videoRef.current.play().catch(() => {});
     }
   }, [peer.stream, volume]);
 
@@ -561,36 +557,33 @@ const RemotePeerCard: React.FC<{
     >
       <audio ref={audioRef} autoPlay playsInline />
 
-      {hasVideo ? (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="absolute inset-0 w-full h-full object-cover rounded-2xl"
+      <div className="relative">
+        <img
+          src={
+            peer.avatarUrl ||
+            `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
+              peer.username
+            )}`
+          }
+          alt={peer.username}
+          className={`w-24 h-24 rounded-full bg-[#1e1f22] object-cover transition-transform ${
+            peer.isSpeaking ? 'scale-105 ring-4 ring-[#23a55a]' : ''
+          }`}
         />
-      ) : (
-        <div className="relative">
-          <img
-            src={
-              peer.avatarUrl ||
-              `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
-                peer.username
-              )}`
-            }
-            alt={peer.username}
-            className={`w-24 h-24 rounded-full bg-[#1e1f22] object-cover transition-transform ${
-              peer.isSpeaking ? 'scale-105 ring-4 ring-[#23a55a]' : ''
-            }`}
-          />
-        </div>
-      )}
 
-      {isStreaming && (
-        <span className="absolute -top-2 -right-2 bg-[#f23f43] text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow animate-pulse">
-          AO VIVO
-        </span>
-      )}
+        {/* Badge vermelho de microfone mutado no avatar */}
+        {peer.isMuted && (
+          <div className="absolute bottom-0 right-0 p-1.5 rounded-full bg-[#f23f43] text-white shadow-lg ring-2 ring-[#2b2d31]">
+            <MicOff className="w-4 h-4" />
+          </div>
+        )}
+
+        {isStreaming && (
+          <span className="absolute -top-2 -right-2 bg-[#f23f43] text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow animate-pulse">
+            AO VIVO
+          </span>
+        )}
+      </div>
 
       {/* Botão de Assistir Transmissão */}
       {isStreaming && (
@@ -608,7 +601,11 @@ const RemotePeerCard: React.FC<{
 
       <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white z-10">
         <span className="font-semibold truncate">{peer.username}</span>
-        {volume === 0 && <VolumeX className="w-3.5 h-3.5 text-[#f23f43]" />}
+        <div className="flex items-center space-x-1">
+          {peer.isMuted && <MicOff className="w-3.5 h-3.5 text-[#f23f43]" />}
+          {peer.isDeafened && <VolumeX className="w-3.5 h-3.5 text-[#f23f43]" />}
+          {volume === 0 && !peer.isMuted && <VolumeX className="w-3.5 h-3.5 text-[#f23f43]" />}
+        </div>
       </div>
     </div>
   );
