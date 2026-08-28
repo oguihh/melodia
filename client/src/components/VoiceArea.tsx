@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   Mic,
   MicOff,
@@ -10,6 +10,10 @@ import {
   PhoneOff,
   Radio,
   StopCircle,
+  Eye,
+  EyeOff,
+  Maximize2,
+  Tv,
 } from 'lucide-react';
 import { Channel, User, PeerConnectionInfo } from '../types';
 
@@ -50,8 +54,12 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
   onStopScreenShare,
   onDisconnect,
 }) => {
+  const [watchingPeerId, setWatchingPeerId] = useState<string | null>(null);
+  const [isWatchingLocalScreen, setIsWatchingLocalScreen] = useState<boolean>(true);
+
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const localScreenRef = useRef<HTMLVideoElement>(null);
+  const stageContainerRef = useRef<HTMLDivElement>(null);
 
   // Vincular vídeo da câmera local
   useEffect(() => {
@@ -65,21 +73,39 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
   useEffect(() => {
     if (localScreenRef.current && screenStream) {
       localScreenRef.current.srcObject = screenStream;
-      localScreenRef.current.play().catch((err) => {
-        console.warn('Erro ao reproduzir preview da tela local:', err);
-      });
+      localScreenRef.current.play().catch(() => {});
     }
   }, [screenStream, isScreenSharing]);
 
   const peerList = Array.from(peers.values());
 
-  // Verificar se algum amigo remoto está compartilhando tela ou câmera
-  const remoteScreenPeer = peerList.find(
+  // Detectar qual peer está transmitindo vídeo/tela
+  const activeStreamers = peerList.filter(
     (p) =>
       p.stream &&
       p.stream.getVideoTracks().length > 0 &&
       p.stream.getVideoTracks().some((t) => t.enabled)
   );
+
+  // Auto-selecionar o primeiro streamer se o usuário ainda não escolheu parar de ver
+  useEffect(() => {
+    if (activeStreamers.length > 0 && !watchingPeerId && watchingPeerId !== '') {
+      setWatchingPeerId(activeStreamers[0].socketId);
+    } else if (activeStreamers.length === 0 && watchingPeerId) {
+      setWatchingPeerId(null);
+    }
+  }, [activeStreamers.length]);
+
+  const currentlyWatchedPeer = peerList.find((p) => p.socketId === watchingPeerId && p.stream);
+
+  const handleToggleFullscreen = () => {
+    if (!stageContainerRef.current) return;
+    if (!document.fullscreenElement) {
+      stageContainerRef.current.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
 
   return (
     <div className="flex-1 bg-[#111214] flex flex-col justify-between overflow-hidden relative select-none">
@@ -94,12 +120,15 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
         </div>
       </div>
 
-      {/* 2. Grid Principal / Palco de Transmissão */}
+      {/* 2. Área Central / Palco de Transmissão ou Grid */}
       <div className="flex-1 p-4 overflow-y-auto flex flex-col items-center justify-center space-y-4">
-        {/* Caso 1: VOCÊ está compartilhando a tela */}
-        {isScreenSharing && screenStream ? (
+        {/* Caso 1: VOCÊ está compartilhando tela e está com o preview expandido */}
+        {isScreenSharing && screenStream && isWatchingLocalScreen ? (
           <div className="w-full h-full max-w-5xl flex flex-col items-center justify-center space-y-3">
-            <div className="w-full h-[65vh] bg-black rounded-xl overflow-hidden shadow-2xl relative border border-[#2b2d31] flex items-center justify-center group">
+            <div
+              ref={stageContainerRef}
+              className="w-full h-[65vh] bg-black rounded-xl overflow-hidden shadow-2xl relative border border-[#2b2d31] flex items-center justify-center group"
+            >
               <video
                 ref={localScreenRef}
                 autoPlay
@@ -108,122 +137,97 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
                 className="w-full h-full object-contain"
               />
 
+              {/* Banner Superior da Transmissão */}
               <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white flex items-center space-x-2 border border-white/10">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#f23f43] animate-pulse" />
                 <span className="font-bold">AO VIVO (1080p 60 FPS)</span>
                 <span className="text-[#949ba4]">• Você está transmitindo</span>
               </div>
 
-              <button
-                onClick={onStopScreenShare}
-                className="absolute top-3 right-3 bg-[#f23f43] hover:bg-[#da373b] text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition shadow-lg"
-              >
-                <StopCircle className="w-4 h-4" />
-                <span>Parar Transmissão</span>
-              </button>
-            </div>
-
-            {/* Faixa de Participantes */}
-            <div className="flex items-center justify-center space-x-3 overflow-x-auto w-full py-1">
-              <div
-                className={`bg-[#2b2d31] rounded-xl px-4 py-2 flex items-center space-x-2 border ${
-                  isSpeaking ? 'border-[#23a55a] ring-2 ring-[#23a55a]/30' : 'border-transparent'
-                }`}
-              >
-                <img
-                  src={
-                    currentUser.avatarUrl ||
-                    `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
-                      currentUser.username
-                    )}`
-                  }
-                  alt={currentUser.username}
-                  className="w-8 h-8 rounded-full bg-[#1e1f22]"
-                />
-                <span className="text-xs font-semibold text-white truncate">
-                  {currentUser.username} (Você)
-                </span>
-                {isMuted && <MicOff className="w-3.5 h-3.5 text-[#f23f43]" />}
-              </div>
-
-              {peerList.map((peer) => (
-                <div
-                  key={peer.socketId}
-                  className={`bg-[#2b2d31] rounded-xl px-4 py-2 flex items-center space-x-2 border ${
-                    peer.isSpeaking ? 'border-[#23a55a] ring-2 ring-[#23a55a]/30' : 'border-transparent'
-                  }`}
+              {/* Controles do Palco */}
+              <div className="absolute top-3 right-3 flex items-center space-x-2 opacity-90 hover:opacity-100 transition">
+                <button
+                  onClick={() => setIsWatchingLocalScreen(false)}
+                  className="bg-[#2b2d31]/80 hover:bg-[#35373c] text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 backdrop-blur-md transition shadow border border-white/10"
+                  title="Minimizar para o grid de avatares"
                 >
-                  <img
-                    src={
-                      peer.avatarUrl ||
-                      `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
-                        peer.username
-                      )}`
-                    }
-                    alt={peer.username}
-                    className="w-8 h-8 rounded-full bg-[#1e1f22]"
-                  />
-                  <span className="text-xs font-semibold text-white truncate">
-                    {peer.username}
-                  </span>
-                </div>
-              ))}
+                  <EyeOff className="w-4 h-4" />
+                  <span>Minimizar Preview</span>
+                </button>
+
+                <button
+                  onClick={handleToggleFullscreen}
+                  className="p-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-white backdrop-blur-md transition border border-white/10"
+                  title="Tela Cheia"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </button>
+
+                <button
+                  onClick={onStopScreenShare}
+                  className="bg-[#f23f43] hover:bg-[#da373b] text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition shadow"
+                >
+                  <StopCircle className="w-4 h-4" />
+                  <span>Parar Transmissão</span>
+                </button>
+              </div>
             </div>
+
+            {/* Faixa de Participantes Abaixo do Palco */}
+            <ParticipantStrip
+              currentUser={currentUser}
+              isSpeaking={isSpeaking}
+              isMuted={isMuted}
+              peerList={peerList}
+            />
           </div>
-        ) : remoteScreenPeer && remoteScreenPeer.stream ? (
-          /* Caso 2: UM AMIGO REMOTO está compartilhando tela */
+        ) : currentlyWatchedPeer ? (
+          /* Caso 2: VOCÊ ESTÁ ASSISTINDO A TRANSMISSÃO DE UM AMIGO */
           <div className="w-full h-full max-w-5xl flex flex-col items-center justify-center space-y-3">
-            <RemoteScreenStage peer={remoteScreenPeer} />
+            <div
+              ref={stageContainerRef}
+              className="w-full h-[65vh] bg-black rounded-xl overflow-hidden shadow-2xl relative border border-[#2b2d31] flex items-center justify-center group"
+            >
+              <RemoteVideoView stream={currentlyWatchedPeer.stream!} />
 
-            {/* Faixa de Participantes */}
-            <div className="flex items-center justify-center space-x-3 overflow-x-auto w-full py-1">
-              <div
-                className={`bg-[#2b2d31] rounded-xl px-4 py-2 flex items-center space-x-2 border ${
-                  isSpeaking ? 'border-[#23a55a] ring-2 ring-[#23a55a]/30' : 'border-transparent'
-                }`}
-              >
-                <img
-                  src={
-                    currentUser.avatarUrl ||
-                    `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
-                      currentUser.username
-                    )}`
-                  }
-                  alt={currentUser.username}
-                  className="w-8 h-8 rounded-full bg-[#1e1f22]"
-                />
-                <span className="text-xs font-semibold text-white truncate">
-                  {currentUser.username} (Você)
-                </span>
-                {isMuted && <MicOff className="w-3.5 h-3.5 text-[#f23f43]" />}
+              {/* Banner de Identificação */}
+              <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white flex items-center space-x-2 border border-white/10">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#f23f43] animate-pulse" />
+                <span className="font-bold">AO VIVO (1080p 60 FPS)</span>
+                <span className="text-[#949ba4]">• Transmitido por {currentlyWatchedPeer.username}</span>
               </div>
 
-              {peerList.map((peer) => (
-                <div
-                  key={peer.socketId}
-                  className={`bg-[#2b2d31] rounded-xl px-4 py-2 flex items-center space-x-2 border ${
-                    peer.isSpeaking ? 'border-[#23a55a] ring-2 ring-[#23a55a]/30' : 'border-transparent'
-                  }`}
+              {/* Botões do Palco: Parar de Assistir e Tela Cheia */}
+              <div className="absolute top-3 right-3 flex items-center space-x-2 opacity-90 hover:opacity-100 transition">
+                <button
+                  onClick={() => setWatchingPeerId('')}
+                  className="bg-[#f23f43]/90 hover:bg-[#f23f43] text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 backdrop-blur-md transition shadow-lg"
+                  title="Parar de assistir e voltar para os avatares"
                 >
-                  <img
-                    src={
-                      peer.avatarUrl ||
-                      `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
-                        peer.username
-                      )}`
-                    }
-                    alt={peer.username}
-                    className="w-8 h-8 rounded-full bg-[#1e1f22]"
-                  />
-                  <span className="text-xs font-semibold text-white truncate">
-                    {peer.username}
-                  </span>
-                </div>
-              ))}
+                  <EyeOff className="w-4 h-4" />
+                  <span>Parar de Assistir</span>
+                </button>
+
+                <button
+                  onClick={handleToggleFullscreen}
+                  className="p-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-white backdrop-blur-md transition border border-white/10"
+                  title="Tela Cheia"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
+
+            {/* Faixa de Participantes Abaixo do Palco */}
+            <ParticipantStrip
+              currentUser={currentUser}
+              isSpeaking={isSpeaking}
+              isMuted={isMuted}
+              peerList={peerList}
+            />
           </div>
         ) : (
-          /* Caso 3: Ninguém compartilhando tela (Grid Normal de Avatares) */
+          /* Caso 3: GRID NORMAL DE CARDS / AVATARES */
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 w-full max-w-6xl">
             {/* Card Local */}
             <div
@@ -263,6 +267,17 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
                 </div>
               )}
 
+              {/* Botão de Expandir se você estiver transmitindo tela */}
+              {isScreenSharing && (
+                <button
+                  onClick={() => setIsWatchingLocalScreen(true)}
+                  className="mt-3 bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-semibold px-3 py-1.5 rounded-md flex items-center space-x-1.5 shadow transition"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Ver Minha Tela</span>
+                </button>
+              )}
+
               <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white">
                 <span className="font-semibold truncate">{currentUser.username} (Você)</span>
                 <div className="flex items-center space-x-1">
@@ -272,10 +287,22 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
               </div>
             </div>
 
-            {/* Cards Remotos */}
-            {peerList.map((peer) => (
-              <RemotePeerCard key={peer.socketId} peer={peer} />
-            ))}
+            {/* Cards de Amigos Remotos */}
+            {peerList.map((peer) => {
+              const isPeerStreaming =
+                peer.stream &&
+                peer.stream.getVideoTracks().length > 0 &&
+                peer.stream.getVideoTracks().some((t) => t.enabled);
+
+              return (
+                <RemotePeerCard
+                  key={peer.socketId}
+                  peer={peer}
+                  isStreaming={isPeerStreaming}
+                  onWatchStream={() => setWatchingPeerId(peer.socketId)}
+                />
+              );
+            })}
           </div>
         )}
       </div>
@@ -342,26 +369,24 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
   );
 };
 
-// Componente para exibir a tela transmitida por um amigo remoto em 1080p 60fps
-const RemoteScreenStage: React.FC<{ peer: PeerConnectionInfo }> = ({ peer }) => {
+// Renderizador do Vídeo Remoto no Palco
+const RemoteVideoView: React.FC<{ stream: MediaStream }> = ({ stream }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
-    if (audioRef.current && peer.stream) {
-      audioRef.current.srcObject = peer.stream;
+    if (audioRef.current) {
+      audioRef.current.srcObject = stream;
       audioRef.current.play().catch(() => {});
     }
-    if (videoRef.current && peer.stream) {
-      videoRef.current.srcObject = peer.stream;
-      videoRef.current.play().catch((err) => {
-        console.warn('Erro ao reproduzir stream remoto de tela:', err);
-      });
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => {});
     }
-  }, [peer.stream]);
+  }, [stream]);
 
   return (
-    <div className="w-full h-[65vh] bg-black rounded-xl overflow-hidden shadow-2xl relative border border-[#2b2d31] flex items-center justify-center">
+    <>
       <audio ref={audioRef} autoPlay playsInline />
       <video
         ref={videoRef}
@@ -369,34 +394,76 @@ const RemoteScreenStage: React.FC<{ peer: PeerConnectionInfo }> = ({ peer }) => 
         playsInline
         className="w-full h-full object-contain"
       />
+    </>
+  );
+};
 
-      <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white flex items-center space-x-2 border border-white/10">
-        <span className="w-2.5 h-2.5 rounded-full bg-[#f23f43] animate-pulse" />
-        <span className="font-bold">AO VIVO (1080p 60 FPS)</span>
-        <span className="text-[#949ba4]">• Transmitido por {peer.username}</span>
+// Faixa de Participantes abaixo do Palco de Transmissão
+const ParticipantStrip: React.FC<{
+  currentUser: User;
+  isSpeaking: boolean;
+  isMuted: boolean;
+  peerList: PeerConnectionInfo[];
+}> = ({ currentUser, isSpeaking, isMuted, peerList }) => {
+  return (
+    <div className="flex items-center justify-center space-x-3 overflow-x-auto w-full py-1">
+      <div
+        className={`bg-[#2b2d31] rounded-xl px-4 py-2 flex items-center space-x-2 border ${
+          isSpeaking ? 'border-[#23a55a] ring-2 ring-[#23a55a]/30' : 'border-transparent'
+        }`}
+      >
+        <img
+          src={
+            currentUser.avatarUrl ||
+            `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
+              currentUser.username
+            )}`
+          }
+          alt={currentUser.username}
+          className="w-8 h-8 rounded-full bg-[#1e1f22]"
+        />
+        <span className="text-xs font-semibold text-white truncate">
+          {currentUser.username} (Você)
+        </span>
+        {isMuted && <MicOff className="w-3.5 h-3.5 text-[#f23f43]" />}
       </div>
+
+      {peerList.map((peer) => (
+        <div
+          key={peer.socketId}
+          className={`bg-[#2b2d31] rounded-xl px-4 py-2 flex items-center space-x-2 border ${
+            peer.isSpeaking ? 'border-[#23a55a] ring-2 ring-[#23a55a]/30' : 'border-transparent'
+          }`}
+        >
+          <img
+            src={
+              peer.avatarUrl ||
+              `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
+                peer.username
+              )}`
+            }
+            alt={peer.username}
+            className="w-8 h-8 rounded-full bg-[#1e1f22]"
+          />
+          <span className="text-xs font-semibold text-white truncate">{peer.username}</span>
+        </div>
+      ))}
     </div>
   );
 };
 
-// Componente de Card Individual de Membro Remoto
-const RemotePeerCard: React.FC<{ peer: PeerConnectionInfo }> = ({ peer }) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
+// Card de Participante Remoto no Grid
+const RemotePeerCard: React.FC<{
+  peer: PeerConnectionInfo;
+  isStreaming?: boolean;
+  onWatchStream: () => void;
+}> = ({ peer, isStreaming, onWatchStream }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
-
-  const hasVideo =
-    peer.stream &&
-    peer.stream.getVideoTracks().length > 0 &&
-    peer.stream.getVideoTracks().some((t) => t.enabled);
 
   useEffect(() => {
     if (audioRef.current && peer.stream) {
       audioRef.current.srcObject = peer.stream;
       audioRef.current.play().catch(() => {});
-    }
-    if (videoRef.current && peer.stream) {
-      videoRef.current.srcObject = peer.stream;
-      videoRef.current.play().catch(() => {});
     }
   }, [peer.stream]);
 
@@ -410,28 +477,36 @@ const RemotePeerCard: React.FC<{ peer: PeerConnectionInfo }> = ({ peer }) => {
     >
       <audio ref={audioRef} autoPlay playsInline />
 
-      {hasVideo ? (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          className="absolute inset-0 w-full h-full object-cover rounded-2xl"
+      <div className="relative">
+        <img
+          src={
+            peer.avatarUrl ||
+            `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
+              peer.username
+            )}`
+          }
+          alt={peer.username}
+          className={`w-24 h-24 rounded-full bg-[#1e1f22] transition-transform ${
+            peer.isSpeaking ? 'scale-105 ring-4 ring-[#23a55a]' : ''
+          }`}
         />
-      ) : (
-        <div className="relative">
-          <img
-            src={
-              peer.avatarUrl ||
-              `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
-                peer.username
-              )}`
-            }
-            alt={peer.username}
-            className={`w-24 h-24 rounded-full bg-[#1e1f22] transition-transform ${
-              peer.isSpeaking ? 'scale-105 ring-4 ring-[#23a55a]' : ''
-            }`}
-          />
-        </div>
+
+        {isStreaming && (
+          <span className="absolute -top-2 -right-2 bg-[#f23f43] text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow animate-pulse">
+            AO VIVO
+          </span>
+        )}
+      </div>
+
+      {/* Botão de Assistir Transmissão (quando amigo está transmitindo tela) */}
+      {isStreaming && (
+        <button
+          onClick={onWatchStream}
+          className="mt-3 bg-[#23a55a] hover:bg-[#209451] text-white text-xs font-bold px-3.5 py-1.5 rounded-md flex items-center space-x-1.5 shadow-md hover:scale-105 transition duration-150"
+        >
+          <Tv className="w-3.5 h-3.5" />
+          <span>Assistir Transmissão</span>
+        </button>
       )}
 
       <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white">
