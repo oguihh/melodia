@@ -18,7 +18,7 @@ function createWindow() {
       contextIsolation: true,
       webSecurity: false,
     },
-    icon: path.join(__dirname, '../public/icon.png'),
+    icon: path.join(__dirname, '../public/icon.ico'),
   });
 
   const isDev = process.env.NODE_ENV === 'development' && !app.isPackaged;

@@ -43,14 +43,17 @@
     "appId": "com.melodia.app",
     "productName": "MELODIA",
     "directories": {
-      "output": "../dist_electron"
+      "output": "../dist_electron",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "public/**/*",
       "package.json"
     ],
     "win": {
+      "icon": "public/icon.ico",
       "target": [
         "nsis",
         "portable"
@@ -61,7 +64,9 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "MELODIA"
+      "shortcutName": "MELODIA",
+      "installerIcon": "public/icon.ico",
+      "uninstallerIcon": "public/icon.ico"
     }
   }
 }
