@@ -68,7 +68,6 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
   } | null>(null);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
-  const localScreenRef = useRef<HTMLVideoElement>(null);
   const stageContainerRef = useRef<HTMLDivElement>(null);
 
   // Vincular vídeo da câmera local
@@ -78,14 +77,6 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
       localVideoRef.current.play().catch(() => {});
     }
   }, [localStream, isCameraOn]);
-
-  // Vincular vídeo da tela local
-  useEffect(() => {
-    if (localScreenRef.current && screenStream) {
-      localScreenRef.current.srcObject = screenStream;
-      localScreenRef.current.play().catch(() => {});
-    }
-  }, [screenStream, isScreenSharing]);
 
   const peerList = Array.from(peers.values());
 
@@ -97,14 +88,12 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
       p.stream.getVideoTracks().some((t) => t.enabled)
   );
 
-  // Auto-selecionar streamer se houver e o usuário não estiver em preview local
+  // Limpar watchingPeerId APENAS se o amigo que você estava assistindo parou de transmitir (NUNCA auto-abrir)
   useEffect(() => {
-    if (activeStreamers.length > 0 && !watchingPeerId && watchingPeerId !== '' && !isScreenSharing) {
-      setWatchingPeerId(activeStreamers[0].socketId);
-    } else if (activeStreamers.length === 0 && watchingPeerId) {
+    if (watchingPeerId && !activeStreamers.some((s) => s.socketId === watchingPeerId)) {
       setWatchingPeerId(null);
     }
-  }, [activeStreamers.length, isScreenSharing]);
+  }, [activeStreamers, watchingPeerId]);
 
   const currentlyWatchedPeer = peerList.find((p) => p.socketId === watchingPeerId && p.stream);
 
@@ -151,7 +140,7 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
 
       {/* 2. Área Central / Palco de Transmissão Expandido Total ou Grid */}
       <div className="flex-1 p-2 sm:p-4 overflow-hidden flex flex-col items-center justify-center min-h-0 w-full">
-        {/* Caso 1: ASSISTINDO A TRANSMISSÃO DE UM AMIGO (Mesmo se você também estiver transmitindo) */}
+        {/* Caso 1: ASSISTINDO A TRANSMISSÃO DE UM AMIGO (Somente quando clicado manualmente) */}
         {currentlyWatchedPeer ? (
           <div className="w-full h-full flex flex-col items-center justify-between min-h-0 space-y-2">
             <div
@@ -167,7 +156,7 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
               </div>
 
               <div className="absolute top-3 right-3 flex items-center space-x-2 opacity-90 hover:opacity-100 transition z-10">
-                {isScreenSharing && (
+                {isScreenSharing && screenStream && (
                   <button
                     onClick={() => {
                       setWatchingPeerId(null);
@@ -182,7 +171,7 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
                 )}
 
                 <button
-                  onClick={() => setWatchingPeerId('')}
+                  onClick={() => setWatchingPeerId(null)}
                   className="bg-[#f23f43]/90 hover:bg-[#f23f43] text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 backdrop-blur-md transition shadow-lg"
                   title="Parar de assistir e voltar para os avatares"
                 >
@@ -223,19 +212,13 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
             />
           </div>
         ) : isScreenSharing && screenStream && isWatchingLocalScreen ? (
-          /* Caso 2: VOCÊ está visualizando a SUA própria transmissão */
+          /* Caso 2: VOCÊ está visualizando a SUA própria transmissão (com preview confiável) */
           <div className="w-full h-full flex flex-col items-center justify-between min-h-0 space-y-2">
             <div
               ref={stageContainerRef}
               className="w-full flex-1 min-h-0 bg-black rounded-xl overflow-hidden shadow-2xl relative border border-[#2b2d31] flex items-center justify-center group"
             >
-              <video
-                ref={localScreenRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-contain"
-              />
+              <LocalScreenView stream={screenStream} />
 
               <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs text-white flex items-center space-x-2 border border-white/10 z-10">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#f23f43] animate-pulse" />
@@ -294,7 +277,7 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
             />
           </div>
         ) : (
-          /* Caso 3: GRID NORMAL DE CARDS */
+          /* Caso 3: GRID NORMAL DE CARDS (Não entra em tela sozinho) */
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 w-full max-w-6xl overflow-y-auto">
             {/* Card Local */}
             <div
@@ -358,7 +341,7 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
               </div>
             </div>
 
-            {/* Cards Remotos com Exibição Visual de Mudo e Botão de Assistir */}
+            {/* Cards Remotos com Botão de Assistir Transmissão Manual */}
             {peerList.map((peer) => {
               const isPeerStreaming =
                 peer.stream &&
@@ -374,7 +357,10 @@ export const VoiceArea: React.FC<VoiceAreaProps> = ({
                   peer={peer}
                   isStreaming={isPeerStreaming}
                   volume={isLocallyMuted ? 0 : userVolume / 100}
-                  onWatchStream={() => setWatchingPeerId(peer.socketId)}
+                  onWatchStream={() => {
+                    setWatchingPeerId(peer.socketId);
+                    setIsWatchingLocalScreen(false);
+                  }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     setContextMenu({ x: e.clientX, y: e.clientY, peer });
@@ -491,12 +477,34 @@ const PeerAudioPlayer: React.FC<{ stream?: MediaStream; volume: number }> = ({
   return <audio ref={audioRef} autoPlay playsInline />;
 };
 
+// Renderizador da Sua Própria Tela (Preview que nunca fica preto)
+const LocalScreenView: React.FC<{ stream: MediaStream }> = ({ stream }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [stream]);
+
+  return (
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      className="w-full h-full object-contain"
+    />
+  );
+};
+
 // Renderizador do Vídeo Remoto no Palco
 const RemoteVideoView: React.FC<{ stream: MediaStream }> = ({ stream }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (videoRef.current) {
+    if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
       videoRef.current.play().catch(() => {});
     }
@@ -574,7 +582,7 @@ const ParticipantStrip: React.FC<{
         )}
       </div>
 
-      {/* Cards dos Amigos (com alternância instantânea de tela ao clicar) */}
+      {/* Cards dos Amigos */}
       {peerList.map((peer) => {
         const isLocallyMuted = !!locallyMutedPeers[peer.socketId];
         const isStreaming =
@@ -673,7 +681,7 @@ const RemotePeerCard: React.FC<{
         )}
       </div>
 
-      {/* Botão de Assistir Transmissão */}
+      {/* Botão de Assistir Transmissão Manual */}
       {isStreaming && (
         <button
           onClick={(e) => {
