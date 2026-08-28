@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String         @id @default(uuid())
+  username     String         @unique
+  email        String         @unique
+  passwordHash String
+  avatarUrl    String?
+  customStatus String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  serversOwned       Server[]       @relation("ServerOwner")
+  memberships        ServerMember[]
+  messages           Message[]
+  invites            Invite[]
+  sentFriendships    Friendship[]   @relation("SentFriendships")
+  receivedFriendships Friendship[]  @relation("ReceivedFriendships")
+  dmChannels1        DMChannel[]    @relation("DMUser1")
+  dmChannels2        DMChannel[]    @relation("DMUser2")
+  directMessages     DirectMessage[]
+}
+
+model Friendship {
+  id         String   @id @default(uuid())
+  senderId   String
+  receiverId String
+  status     String   @default("PENDING") // PENDING, ACCEPTED, BLOCKED
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  sender   User @relation("SentFriendships", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("ReceivedFriendships", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+}
+
+model DMChannel {
+  id        String          @id @default(uuid())
+  user1Id   String
+  user2Id   String
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  user1    User            @relation("DMUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2    User            @relation("DMUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+  messages DirectMessage[]
+
+  @@unique([user1Id, user2Id])
+}
+
+model DirectMessage {
+  id          String    @id @default(uuid())
+  dmChannelId String
+  senderId    String
+  content     String
+  isEncrypted Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  dmChannel DMChannel @relation(fields: [dmChannelId], references: [id], onDelete: Cascade)
+  sender    User      @relation(fields: [senderId], references: [id], onDelete: Cascade)
+}
+
+model Server {
+  id        String         @id @default(uuid())
+  name      String
+  iconUrl   String?
+  ownerId   String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  owner     User           @relation("ServerOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members   ServerMember[]
+  channels  Channel[]
+  invites   Invite[]
+}
+
+model ServerMember {
+  id        String   @id @default(uuid())
+  serverId  String
+  userId    String
+  role      String   @default("MEMBER") // ADMIN, MEMBER
+  joinedAt  DateTime @default(now())
+
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([serverId, userId])
+}
+
+model Channel {
+  id        String    @id @default(uuid())
+  name      String
+  type      String    @default("TEXT") // TEXT, VOICE
+  serverId  String
+  createdAt DateTime  @default(now())
+
+  server    Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  messages  Message[]
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  content     String
+  channelId   String
+  userId      String
+  isEncrypted Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Invite {
+  id        String    @id @default(uuid())
+  code      String    @unique
+  serverId  String
+  creatorId String
+  maxUses   Int?      @default(0) // 0 = unlimited
+  uses      Int       @default(0)
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  server    Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  creator   User      @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+}

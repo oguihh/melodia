@@ -1,0 +1,14 @@
+{
+  "name": "discord-clone-e2ee",
+  "version": "1.0.0",
+  "description": "Discord Clone com Chamadas de Voz, Vídeo, Compartilhamento de Tela e E2EE",
+  "scripts": {
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "app": "concurrently -n \"SERVER,DESKTOP\" -c \"bgBlue.bold,bgGreen.bold\" \"npm run dev --prefix server\" \"npm run electron:dev --prefix client\"",
+    "build": "npm run build --prefix server && npm run build --prefix client",
+    "start": "npm run start --prefix server"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}
