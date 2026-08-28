@@ -16,11 +16,12 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
+      webSecurity: false,
     },
     icon: path.join(__dirname, '../public/icon.png'),
   });
 
-  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+  const isDev = process.env.NODE_ENV === 'development' && !app.isPackaged;
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
